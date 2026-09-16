@@ -1,0 +1,33 @@
+{
+  "name": "jiso-reversi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "未来の一手を予約する、時層リバーシ",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests *.ts",
+    "format": "prettier --write src tests tools *.ts *.json",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "validate:openings": "tsx tools/validate-openings.ts",
+    "benchmark": "tsx tools/benchmark-balance.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.6.0",
+    "eslint": "10.10.0",
+    "prettier": "3.9.6",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.0",
+    "vite": "8.3.0",
+    "vitest": "5.0.1"
+  }
+}
