@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { initialBoard, rotateQuadrant } from '../../src/domain/remix-board';
+import { initialBoard, quadrantOf, rotateQuadrant } from '../../src/domain/remix-board';
 import { legalMoves, scores } from '../../src/domain/rules';
 
 it('確定した16石と両色8合法手で開始する', () => {
@@ -32,4 +32,8 @@ it('左右は逆操作、4回で復元し、区画外と石数を変えない', 
     expect(board).toEqual(snapshot);
   }
   expect(() => rotateQuadrant(initialBoard(), 4 as never, 'right')).toThrow();
+  expect(() => rotateQuadrant(initialBoard(), 0, 'up' as never)).toThrow('向き');
+});
+it('各マスを4つの区画へ正しく割り当てる', () => {
+  expect([quadrantOf(0), quadrantOf(7), quadrantOf(56), quadrantOf(63)]).toEqual([0, 1, 2, 3]);
 });

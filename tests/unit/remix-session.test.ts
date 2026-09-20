@@ -36,3 +36,13 @@ it('AIの先手と人の先手が再戦ごとに交代する', () => {
   session.start('ai', true);
   expect(session.match.turn).toBe(session.human);
 });
+it('演出中の選択を拒否し、同じ世代・版の完了だけを受け入れる', () => {
+  const session = new RemixSession();
+  session.busy = true;
+  expect(() => session.select(available(session.match)[0])).toThrow('演出・思考');
+  session.busy = true;
+  expect(session.valid(session.generation, session.match.version)).toBe(true);
+  expect(session.valid(session.generation + 1, session.match.version)).toBe(false);
+  session.finish(session.generation, session.match.version);
+  expect(session.busy).toBe(false);
+});

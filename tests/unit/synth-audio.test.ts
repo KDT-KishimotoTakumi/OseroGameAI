@@ -125,3 +125,14 @@ test('ゼロ音量・不正音量を処理し、連鎖音の高さは上限で�
   expect(contexts[0].oscillators[2].frequency.setValueAtTime.mock.calls[0][0]).toBe(high);
   expect(contexts[0].gains[1].gain.setTargetAtTime).toHaveBeenLastCalledWith(1, 0, 0.02);
 });
+test('着手音と回転音を鳴らし、終了した音源を解放する', async () => {
+  engine.configure({ ...defaults, music: false });
+  await engine.unlock();
+  const context = contexts[0];
+  engine.play('place');
+  engine.play('rotate');
+  expect(context.oscillators).toHaveLength(4);
+  context.oscillators[0].onended?.();
+  expect(context.oscillators[0].disconnect).toHaveBeenCalled();
+  expect(context.gains[2].disconnect).toHaveBeenCalled();
+});
