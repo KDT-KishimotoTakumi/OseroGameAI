@@ -23,10 +23,13 @@ npm run dev
 npm run typecheck
 npm run lint
 npm test
+npm run test:coverage
 npm run build
 npm run benchmark
 npm run test:e2e
 ```
+
+`npm run test:coverage` は現行ルールの単体テスト対象に、文・分岐・関数・行数の各90%以上を必須とします。画面・Workerを含む操作経路は `npm run test:e2e` でChromium、Firefox、Chrome、Edgeの4ブラウザを確認します。
 
 ブラウザ未導入なら `npx playwright install chromium firefox`。Chrome・Edgeは端末に導入済みのものを利用。`validate:openings` は旧ルール資料の検証です。
 
