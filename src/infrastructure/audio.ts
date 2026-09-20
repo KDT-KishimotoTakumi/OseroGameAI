@@ -1,12 +1,21 @@
-let enabled = true;
-export function setSoundEnabled(value: boolean): void { enabled = value; }
-export function playMoveSound(): void {
-  if (!enabled) return;
-  try {
-    if(localStorage.getItem('jiso-reversi.sound')==='off')return;
-    const context = new AudioContext(); const oscillator = context.createOscillator(); const gain = context.createGain();
-    oscillator.frequency.value = 440; gain.gain.setValueAtTime(0.04, context.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.08);
-    oscillator.connect(gain).connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + 0.08);
-    oscillator.onended=()=>{void context.close();};
-  } catch { /* 音声が利用できない環境では無音で継続 */ }
+import { SynthAudio, type AudioSettings, type SoundCue } from './synth-audio';
+
+const engine = new SynthAudio();
+let settings: AudioSettings = { sound: true, music: true, soundVolume: 0.55, musicVolume: 0.3 };
+export function configureAudio(value: AudioSettings) {
+  settings = { ...value };
+  engine.configure(settings);
 }
+export const unlockAudio = () => engine.unlock();
+export const setAudioHidden = (hidden: boolean) => engine.setHidden(hidden);
+export const setMusicPlaying = (playing: boolean) => engine.setPlaying(playing);
+export const playGameSound = (cue: SoundCue, chain?: number) => engine.play(cue, chain);
+export const stopGameSounds = () => engine.stopEffects();
+export const disposeAudio = () => engine.dispose();
+export function setSoundEnabled(sound: boolean) {
+  configureAudio({ ...settings, sound });
+}
+export function playMoveSound() {
+  engine.play('place');
+}
+if (import.meta.hot) import.meta.hot.dispose(disposeAudio);

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "未来の一手を予約する、時層リバーシ",
+  "description": "区画回転と連続攻撃でHPを競うリミックス・オセロ",
   "engines": {
     "node": ">=22.12.0"
   },

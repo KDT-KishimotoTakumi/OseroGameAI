@@ -1,303 +1,530 @@
-import { animateFlips } from './presentation/stone-animation';
 import './presentation/styles.css';
 import './presentation/rpg.css';
-import {
-  createMatch,
-  transition,
-  available,
-  party,
-  type Match,
-  type Command,
-} from './domain/match';
-import { HEROES } from './domain/heroes';
-import { STAGES } from './domain/campaign';
-import { scores } from './domain/rules';
+import './presentation/remix.css';
+import { RemixSession } from './application/remix-session';
+import { TurnNotice } from './application/turn-notice';
+import { available, sameCommand } from './domain/remix-match';
+import { other, type RemixMatch, type RemixCommand, type Quadrant } from './domain/remix-types';
+import { quadrantOf } from './domain/remix-board';
 import type { AiLevel } from './ai/search';
-import { readReplays, writeReplay, type Replay } from './infrastructure/replays';
-import { playMoveSound } from './infrastructure/audio';
-import { LESSONS } from './presentation/tutorial';
+import { boardMarkup, hpMarkup, playerName } from './presentation/remix-board';
+import { playRemixAttack } from './presentation/remix-animation';
+import { PRACTICE, lessonSuccess } from './presentation/remix-tutorial';
+import {
+  readRemixReplays,
+  saveRemixReplay,
+  type RemixReplay,
+  type RemixFrame,
+} from './infrastructure/remix-replays';
+import {
+  configureAudio,
+  unlockAudio,
+  setAudioHidden,
+  setMusicPlaying,
+  playGameSound,
+  stopGameSounds,
+} from './infrastructure/audio';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
-let match = createMatch(Date.now() >>> 0),
-  frames: Match[] = [structuredClone(match)];
-let mode: 'local' | 'ai' = 'local',
-  level: AiLevel = 'standard',
+const live = new RemixSession();
+const turnNotice = new TurnNotice();
+let frames: RemixFrame[] = [{ match: structuredClone(live.match) }];
+let input: 'cell' | 'rotate' = 'cell',
+  quadrant: Quadrant | null = null,
+  direction: 'right' | 'left' = 'right';
+let level: AiLevel = 'standard',
   worker: Worker | undefined,
-  epoch = 0;
-let replay: Replay<Match> | null = null,
+  animation: AbortController | undefined;
+let practice: {
+  index: number;
+  session: RemixSession;
+  success: boolean;
+  cancelled: boolean;
+} | null = null;
+let replay: RemixReplay | null = null,
   replayIndex = 0,
-  lesson = -1,
-  notice = '';
-let animating=false;
+  records = readRemixReplays();
+let notice = '',
+  attackStatus = '石を置くか、区画を回すかを選んでください。';
 let sound = true,
+  music = true,
+  soundVolume = 0.55,
+  musicVolume = 0.3,
   motion = false,
   duration = 'standard';
 try {
   const settings = JSON.parse(localStorage.getItem('jiso.settings') ?? '{}');
   sound = settings.sound ?? true;
+  music = settings.music ?? sound;
+  soundVolume =
+    typeof settings.soundVolume === 'number'
+      ? Math.max(0, Math.min(1, settings.soundVolume))
+      : 0.55;
+  musicVolume =
+    typeof settings.musicVolume === 'number' ? Math.max(0, Math.min(1, settings.musicVolume)) : 0.3;
   motion = settings.motion ?? false;
   duration = settings.duration ?? 'standard';
 } catch {
   notice = '設定を初期化しました';
 }
-const name = (p: number) => (p === 1 ? 'シアン' : 'オレンジ');
-const coord = (i: number) => String.fromCharCode(65 + (i % 8)) + (Math.floor(i / 8) + 1);
-const rule = (m: Match) =>
-  m.victory === 'base'
-    ? '相手の2拠点を陥落'
-    : m.victory === 'score'
-      ? '通常着手終了時の石数'
-      : '自分のクエスト3件を達成';
-const escape = (s: string) =>
-  s.replace(
+const escape = (value: string) =>
+  value.replace(
     /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
+    (character) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!,
   );
+const currentSession = () => practice?.session ?? live;
 function stop() {
-  epoch++;
+  stopGameSounds();
   worker?.terminate();
   worker = undefined;
+  animation?.abort();
+  animation = undefined;
 }
-function start(seed = Date.now() >>> 0, stage = match.stage, heroes = match.heroes, swap = false) {
+function interrupt() {
+  turnNotice.cancel();
   stop();
-  match = createMatch(seed, stage, [...heroes]);
-  if (swap) {
-    match.turn = match.turn === 1 ? 2 : 1;
-    match.heroes = [heroes[1], heroes[0]];
-  }
-  frames = [structuredClone(match)];
-  replay = null;
-  lesson = -1;
-  notice = '';
-  render();
+  live.interrupt();
+  practice?.session.interrupt();
 }
-function settings() {
+function saveSettings() {
+  configureAudio({ sound, music, soundVolume, musicVolume });
   try {
-    localStorage.setItem('jiso.settings', JSON.stringify({ sound, motion, duration }));
+    localStorage.setItem(
+      'jiso.settings',
+      JSON.stringify({ sound, music, soundVolume, musicVolume, motion, duration }),
+    );
     localStorage.setItem('jiso-reversi.sound', sound ? 'on' : 'off');
   } catch {
-    notice = '設定を保存できません';
+    notice = '設定を保存できませんでした';
   }
 }
-function effect(text: string) {
-  const node = document.createElement('div');
-  node.className = 'rpg-effect gold';
-  node.textContent = text;
-  const ms =
-    motion || matchMedia('(prefers-reduced-motion: reduce)').matches
-      ? 150
-      : duration === 'short'
-        ? 400
-        : duration === 'long'
-          ? 1400
-          : 800;
-  node.style.animationDuration = ms + 'ms';
-  document.body.append(node);
-  setTimeout(() => node.remove(), ms);
+function start(mode = live.mode, rematch = false, first = live.match.firstPlayer) {
+  interrupt();
+  live.start(mode, rematch, first);
+  frames = [{ match: structuredClone(live.match) }];
+  practice = null;
+  replay = null;
+  input = 'cell';
+  quadrant = null;
+  notice = '';
+  attackStatus = '新しい対局を開始しました';
+  render();
 }
-async function commit(command: Command) {
-  if (replay || lesson >= 0 || animating) return;
+function lesson(index: number) {
+  interrupt();
+  const session = new RemixSession();
+  session.match = structuredClone(PRACTICE[index].start);
+  practice = { index, session, success: false, cancelled: false };
+  replay = null;
+  input = 'cell';
+  quadrant = null;
+  notice = '';
+  attackStatus = '練習の説明に沿って操作してください';
+  render();
+}
+function select(command: RemixCommand) {
+  const session = currentSession();
+  if (
+    turnNotice.active ||
+    session.busy ||
+    replay ||
+    session.match.winner !== null ||
+    practice?.success
+  )
+    return;
   try {
-    const before=[...match.board];
-    match = transition(match, command);
-    animating=true;
-    frames.push(structuredClone(match));
-    if (sound) playMoveSound();
-    effect(match.log.join('・'));
-    if (match.winner !== null) {
-      try {
-        writeReplay({
-          id: crypto.randomUUID(),
-          date: new Date().toLocaleString('ja-JP'),
-          result: match.winner === 0 ? '引き分け' : name(match.winner) + 'の勝利',
-          snapshots: frames,
-        });
-      } catch {
-        notice = '対局は完了しましたが履歴を保存できませんでした';
-      }
-    }
-    render();
-    if(!motion&&!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      await animateFlips(app,before,match.board,duration==='short'?250:duration==='long'?800:450);
-    }
-    animating=false;
+    session.select(command);
+    notice = '';
     render();
   } catch (error) {
-    animating=false;
     notice = (error as Error).message;
     render();
   }
 }
-function button(id: string, fn: () => void) {
-  app.querySelector('#' + id)?.addEventListener('click', fn);
+async function confirm() {
+  const session = currentSession(),
+    training = practice;
+  if (turnNotice.active || session.busy || !session.selection || replay) return;
+  if (
+    training &&
+    !lessonSuccess(PRACTICE[training.index], session.selection.command, training.cancelled)
+  ) {
+    notice =
+      training.index === 2 && !training.cancelled
+        ? '一度「取り消す」を押してから、もう一度左回りを選んでください。'
+        : '練習の説明にあるマス・区画・方向を選んでください。やり直しもできます。';
+    render();
+    return;
+  }
+  const before = structuredClone(session.match);
+  try {
+    const result = session.confirm(),
+      generation = session.generation,
+      version = session.match.version;
+    stop();
+    const controller = new AbortController();
+    animation = controller;
+    if (result.command.kind !== 'pass')
+      playGameSound(result.command.kind === 'rotate' ? 'rotate' : 'place');
+    if (!training) {
+      frames.push({
+        match: structuredClone(result.next),
+        command: result.command,
+        waves: result.waves,
+        damage: result.damage,
+      });
+      if (result.next.winner !== null) {
+        try {
+          saveRemixReplay({
+            id: crypto.randomUUID(),
+            date: new Date().toLocaleString('ja-JP'),
+            result:
+              result.next.winner === 0 ? '引き分け' : playerName(result.next.winner) + 'の勝利',
+            schemaVersion: 1,
+            ruleVersion: result.next.ruleVersion,
+            mode: live.mode,
+            frames: structuredClone(frames),
+          });
+          records = readRemixReplays();
+        } catch {
+          notice = '対局は完了しましたが、履歴を保存できませんでした。';
+        }
+      }
+    }
+    const valid = () =>
+      !controller.signal.aborted &&
+      session.valid(generation, version) &&
+      currentSession() === session &&
+      !replay;
+    render(before);
+    await playRemixAttack(app, before, result, {
+      current: valid,
+      signal: controller.signal,
+      reduced: motion || matchMedia('(prefers-reduced-motion: reduce)').matches,
+      ms: duration === 'short' ? 450 : duration === 'long' ? 1400 : 900,
+      onWave: (chain) => {
+        if (valid()) playGameSound('chain', chain);
+      },
+      show: (visual, label) => {
+        if (valid()) {
+          attackStatus = label;
+          render(visual);
+        }
+      },
+    });
+    if (!valid()) return;
+    session.finish(generation, version);
+    if (result.next.winner !== null) playGameSound('victory');
+    animation = undefined;
+    if (training) {
+      training.success = true;
+      notice = '練習成功！ 次の練習へ進めます。';
+    }
+    attackStatus =
+      result.command.kind === 'pass'
+        ? `${playerName(result.actor)}は置けるマスがないためパスしました`
+        : `${result.waves.length}連鎖・${result.damage}ダメージ`;
+    render();
+  } catch (error) {
+    session.busy = false;
+    notice = (error as Error).message;
+    render();
+  }
 }
-function render() {
-  const openSections = new Set(
-    [...app.querySelectorAll('details[open]')].map((d) => d.querySelector('summary')?.textContent),
+function on(id: string, action: () => void) {
+  app.querySelector('#' + id)?.addEventListener('click', action);
+}
+function runAi() {
+  if (
+    turnNotice.active ||
+    worker ||
+    practice ||
+    replay ||
+    live.mode !== 'ai' ||
+    live.match.turn === live.human ||
+    live.match.winner !== null ||
+    live.busy
+  )
+    return;
+  const generation = live.generation,
+    version = live.match.version;
+  live.busy = true;
+  worker = new Worker(new URL('./ai/remix-worker.ts', import.meta.url), { type: 'module' });
+  const receive = (command: RemixCommand) => {
+    if (!live.valid(generation, version) || practice || replay) return;
+    worker?.terminate();
+    worker = undefined;
+    live.busy = false;
+    const legal = available(live.match);
+    const chosen =
+      legal.find((candidate) => command && sameCommand(candidate, command)) ?? legal[0];
+    if (chosen) {
+      live.select(chosen);
+      void confirm();
+    }
+  };
+  worker.onmessage = (
+    event: MessageEvent<{ generation: number; version: number; command: RemixCommand }>,
+  ) => {
+    if (event.data.generation === generation && event.data.version === version)
+      receive(event.data.command);
+  };
+  worker.onerror = () => {
+    notice = 'AI処理に失敗したため、合法な代替手を選びます。';
+    receive(available(live.match)[0]);
+  };
+  worker.postMessage({
+    match: live.match,
+    ai: other(live.human),
+    level,
+    generation,
+    version,
+    seed: Date.now() >>> 0,
+  });
+}
+function render(visual?: RemixMatch) {
+  if (!visual && !practice && !replay && !live.busy && live.match.winner === null) {
+    const generation = live.generation,
+      version = live.match.version;
+    const passing = available(live.match)[0]?.kind === 'pass';
+    const label = passing
+      ? `${playerName(live.match.turn)}は置けるマスがないためパスします`
+      : live.mode === 'ai'
+        ? live.match.turn === live.human
+          ? 'あなたの番です'
+          : 'AIの番です'
+        : `${playerName(live.match.turn)}の番です`;
+    turnNotice.begin(`${generation}:${version}`, label, () => {
+      if (!live.valid(generation, version) || practice || replay) return;
+      if (passing) {
+        live.select({ kind: 'pass' });
+        void confirm();
+      } else render();
+    });
+  }
+  const open = new Set(
+    [...app.querySelectorAll('details[open]')].map(
+      (node) => node.querySelector('summary')?.textContent,
+    ),
   );
-  stop();
+  const session = currentSession(),
+    actual = replay ? replay.frames[replayIndex].match : session.match,
+    current = visual ?? actual;
+  const commands = available(actual),
+    rotateAllowed = commands.some((command) => command.kind === 'rotate');
+  const aiTurn = !practice && live.mode === 'ai' && actual.turn !== live.human;
+  const locked =
+    turnNotice.active ||
+    !!replay ||
+    session.busy ||
+    actual.winner !== null ||
+    aiTurn ||
+    !!practice?.success;
+  const preview = session.busy || replay ? null : session.selection;
+  setMusicPlaying(!replay && (actual.winner === null || session.busy));
   document.documentElement.classList.toggle(
     'reduced-motion',
     motion || matchMedia('(prefers-reduced-motion: reduce)').matches,
   );
-  if (lesson >= 0) {
-    app.innerHTML = `<main class="shell"><h1>遊び方</h1><section class="panel-card tutorial"><p>ステップ ${lesson + 1} / 5</p><h2>${LESSONS[lesson][0]}</h2><p>${LESSONS[lesson][1]}</p><img class="companions" src="/assets/companions.svg" alt="英雄キャラクター"><button id="prev" ${lesson === 0 ? 'disabled' : ''}>前へ</button><button id="next">${lesson === 4 ? '完了' : '次へ'}</button><button id="close">対局へ戻る</button></section></main>`;
-    button('prev', () => {
-      lesson--;
-      render();
-    });
-    button('next', () => {
-      lesson = lesson === 4 ? -1 : lesson + 1;
-      render();
-    });
-    button('close', () => {
-      lesson = -1;
-      render();
-    });
-    return;
-  }
-  const m = replay ? replay.snapshots[replayIndex] : match,
-    commands = available(m),
-    legal = new Set(
-      commands.filter((c) => c.kind === 'cell').map((c) => (c as { index: number }).index),
+  app.innerHTML = `<main class="shell"><p class="width-warning">横幅1280px以上の画面でプレイしてください。</p><header><div><h1>リミックス・オセロ</h1><p>盤面を回して、連続攻撃で相手のHPを0にする。</p><p>石を置くか、4×4区画を右・左に回すか。どちらか1つで勝負。</p></div><div class="status" aria-live="polite"><strong>${actual.winner !== null ? (actual.winner === 0 ? '引き分け' : playerName(actual.winner) + 'の勝利') : playerName(actual.turn) + 'の手番'}</strong><span>${actual.ply}手　${replay ? '履歴再生' : practice ? '練習モード' : live.mode === 'ai' ? 'あなた：シアン ／ AI：オレンジ' : '2人対戦'}</span><span>${actual.winner !== null ? '対局終了' : aiTurn ? 'AIが思考・攻撃中' : '自分の操作を選んでください'}</span></div></header>
+ <nav class="mode-toolbar"><button id="local">2人対戦</button><button id="ai">AI対戦</button><button id="tutorial">練習モード</button><button id="new">新しい対局</button><button id="rematch">先後を交代して再戦</button><label>難易度<select id="difficulty">${['beginner', 'standard', 'advanced'].map((value, index) => `<option value="${value}" ${level === value ? 'selected' : ''}>${['初級', '標準', '上級'][index]}</option>`).join('')}</select></label></nav>
+ ${practice ? `<section class="tutorial-banner"><h2>${PRACTICE[practice.index].title}</h2><p>${PRACTICE[practice.index].text}</p><p id="practice-progress">${practice.success ? '練習成功' : '練習中'} ${practice.index + 1} / ${PRACTICE.length}</p><button id="retry">この練習をやり直す</button><button id="next" ${practice.success ? '' : 'disabled'}>${practice.index === PRACTICE.length - 1 ? '練習を完了' : '次の練習へ'}</button><button id="close-practice">元の対局に戻る</button></section>` : ''}
+ ${hpMarkup(current)}<p role="status">${escape(notice)}</p><section class="game-layout"><div class="board-wrap">${boardMarkup(current, { locked, input, preview, quadrant: input === 'rotate' ? quadrant : null })}<p>白点：着手できる場所 ／ 太線：4つの区画 ／ 黄色の番号：反転する順番</p><p id="attack-status" aria-live="polite">${replay ? `${replay.frames[replayIndex].waves?.length ?? 0}連鎖・${replay.frames[replayIndex].damage ?? 0}ダメージ` : escape(attackStatus)}</p>
+ ${replay ? `<section class="result-card"><p>リプレイ ${replayIndex}/${replay.frames.length - 1}手</p><button id="rprev" ${replayIndex === 0 ? 'disabled' : ''}>前の手</button><button id="rnext" ${replayIndex === replay.frames.length - 1 ? 'disabled' : ''}>次の手</button><button id="rclose">対局へ戻る</button><button id="restart">この開始条件の先後を交代して再戦</button></section>` : actual.winner !== null && !practice ? `<section class="result-card"><h2>対局結果</h2><p>${actual.endReason === 'hp' ? 'HPが0になったため終了' : actual.endReason === 'blocked' ? '双方とも置けるマスがないため、HP→石数で判定' : '攻撃なしが10手続いたため、HP→石数で判定'}</p><button id="same">先後を交代して再戦</button></section>` : ''}</div>
+ <aside class="panel"><section class="panel-card"><h2>自分の番の操作</h2><div class="action-row"><button id="place-mode" aria-pressed="${input === 'cell'}" ${locked ? 'disabled' : ''}>石を置く</button><button id="rotate-mode" aria-pressed="${input === 'rotate'}" ${locked || !rotateAllowed ? 'disabled' : ''}>区画を回す</button></div><p id="rotation-rule">${rotateAllowed ? '回転できます。置けるマスがない番は自動でパスします。' : '前の自分の番に回したので、今回は石を置いてください。'}</p>
+ ${input === 'rotate' ? `<p>回す区画を選ぶ</p><div class="action-row">${['左上', '右上', '左下', '右下'].map((label, index) => `<button data-quarter="${index}" aria-pressed="${quadrant === index}" ${locked ? 'disabled' : ''}>${label}</button>`).join('')}</div><div class="action-row"><button id="right" aria-pressed="${direction === 'right'}" ${locked ? 'disabled' : ''}>右回り ↻</button><button id="left" aria-pressed="${direction === 'left'}" ${locked ? 'disabled' : ''}>左回り ↺</button></div>` : '<p>白点のマスをクリックすると攻撃予告が出ます。</p>'}</section>
+ <section class="panel-card preview-card"><h2>攻撃の予告</h2><p id="preview">${preview ? `${preview.waves.length}連鎖 ／ 合計 ${preview.damage}ダメージ<br>相手HP：${actual.hp[other(actual.turn)]} → ${preview.next.hp[other(actual.turn)]}` : '操作を選ぶと反転する石とダメージを表示します。'}</p><button id="confirm" ${locked || !preview ? 'disabled' : ''}>攻撃を決定</button><button id="cancel" ${locked || !preview ? 'disabled' : ''}>取り消す</button></section>
+ <section class="panel-card"><h2>勝ち方</h2><p>反転1個で1ダメージ。連続攻撃で相手HPを0にすると勝ち。</p><p id="quiet">攻撃なし：${actual.quiet} / 10手</p><p>10手続いたら残りHP、同じなら石数で判定。双方とも置けない場合も、HP→石数で判定します。</p></section>
+ <details><summary>演出設定</summary><label><input id="music" type="checkbox" ${music ? 'checked' : ''}>BGM</label><label class="audio-setting" for="music-volume">BGM音量<output id="music-volume-value">${Math.round(musicVolume * 100)}%</output><input id="music-volume" type="range" min="0" max="100" value="${Math.round(musicVolume * 100)}"></label><label><input id="sound" type="checkbox" ${sound ? 'checked' : ''}>効果音</label><label class="audio-setting" for="sound-volume">SE音量<output id="sound-volume-value">${Math.round(soundVolume * 100)}%</output><input id="sound-volume" type="range" min="0" max="100" value="${Math.round(soundVolume * 100)}"></label><p>音は最初のクリック・キー操作後に始まります。別のタブへ移ると一時停止します。</p><label><input id="motion" type="checkbox" ${motion ? 'checked' : ''}>演出軽減</label><select id="duration" aria-label="演出速度">${['short', 'standard', 'long'].map((value, index) => `<option value="${value}" ${duration === value ? 'selected' : ''}>${['短', '標準', '長'][index]}</option>`).join('')}</select></details>
+ <details><summary>対局履歴・全手再生</summary><div id="history"></div></details></aside></section></main>`;
+  if (turnNotice.active)
+    app.insertAdjacentHTML(
+      'beforeend',
+      `<div id="turn-notice" class="turn-notice" aria-live="polite"><span>${escape(turnNotice.text)}</span></div>`,
     );
-  const allies = new Set([...party(m, 1), ...party(m, 2)]),
-    tally = scores(m.board),
-    locked = animating || !!replay || m.winner !== null || (mode === 'ai' && m.turn === 2);
-  const terrain = STAGES[m.stage].terrain;
-  app.innerHTML = `<main class="shell"><p class="width-warning">横幅1280px以上の画面でプレイしてください。</p><header><div><h1>時層リバーシ RPG</h1><p>目的：${rule(m)}</p><p>120手では拠点数 → クエスト達成数 → 石数で判定</p></div><div class="status" aria-live="polite"><strong>${m.winner !== null ? (m.winner === 0 ? '引き分け' : name(m.winner) + 'の勝利') : name(m.turn) + 'の手番'}</strong><span>${m.ply}/120手　石数 ${tally[0]} 対 ${tally[1]}</span></div></header>
-  <nav class="mode-toolbar"><button id="local">2人対戦</button><button id="ai">AI対戦</button><button id="tutorial">遊び方</button><button id="new">新しい対局</button><label>難易度<select id="difficulty">${['beginner', 'standard', 'advanced'].map((l, i) => `<option value="${l}" ${level === l ? 'selected' : ''}>${['初級', '標準', '上級'][i]}</option>`).join('')}</select></label></nav>
-  <p role="status">${escape(notice)}</p>
-  <section class="game-layout"><div class="board-wrap">
-  <div class="board" role="group" aria-label="RPG盤面">${m.board
-    .map((cell, i) => {
-      const base = m.rpg.heroes.find((h) => h.index === i),
-        land = terrain.find((t) => t.index === i);
-      return `<button class="cell ${cell === 1 ? 'stone-cyan' : cell === 2 ? 'stone-orange' : ''} ${base ? 'hero-' + (base.owner === 1 ? 'cyan' : 'orange') : ''} ${allies.has(i) ? 'party-member' : ''} ${land ? 'terrain-' + land.type : ''}" data-index="${i}" aria-label="${coord(i)} ${base ? name(base.owner) + '拠点 ' + (base.defeated ? '陥落' : base.shield ? '防御あり' : '防御なし') : cell ? name(cell) + '石' : (land?.label ?? '空き')} ${legal.has(i) ? '行動可能' : ''}" aria-disabled="${locked || !legal.has(i)}"><span class="coord">${coord(i)}</span>${base ? `<span class="portrait ${base.owner === 2 ? 'orange-portrait' : ''}" role="img" aria-label="英雄"></span><span class="base-state">${base.defeated ? '陥落' : base.shield ? '防御' : '攻撃可'}</span>` : cell ? '<span class="stone"></span>' : legal.has(i) ? '<span class="legal-dot"></span>' : ''}${land ? `<span class="terrain-mark">${land.label}</span>` : ''}</button>`;
-    })
-    .join('')}</div><p>白点：着手　緑枠：仲間　四隅：英雄拠点</p>
-  ${replay ? `<section class="result-card"><p>リプレイ ${replayIndex}/${replay.snapshots.length - 1}手</p><button id="rprev">前の手</button><button id="rnext">次の手</button><button id="rclose">対局に戻る</button><button id="restart">この開始条件で再戦</button></section>` : m.winner !== null ? `<section class="result-card"><h2>対局結果</h2><p>${m.winner === 0 ? '引き分け' : name(m.winner) + 'の勝利'}</p><p>${m.log.map(escape).join('・')}</p><button id="same">同じ条件で再戦</button><button id="swap">先手・英雄を交換して再戦</button></section>` : ''}
-  </div><aside class="panel"><section class="panel-card"><h2>可能な行動</h2><p>白点に着手、または相手の拠点をクリック。どの行動も1手を使います。</p><button id="skill" ${locked || !commands.some((c) => c.kind === 'skill') ? 'disabled' : ''}>固有スキル：${HEROES[m.heroes[m.turn - 1]].name}</button><p>${HEROES[m.heroes[m.turn - 1]].skill}</p><button id="pass" ${locked || !commands.some((c) => c.kind === 'pass') ? 'disabled' : ''}>通常パス</button></section>
-  ${([1, 2] as const).map((p) => `<section class="panel-card"><h2>${name(p)}　Lv.${m.rpg.level[p]}</h2><p>経験値 ${m.rpg.experience[p]}　仲間 ${party(m, p).length}　拠点 ${m.rpg.heroes.filter((h) => h.owner === p && !h.defeated).length}/2</p><ul>${m.quests[p].map((q) => `<li>${q.text} ${q.progress}/${q.goal} ${q.progress >= q.goal ? '達成' : ''}</li>`).join('')}</ul></section>`).join('')}
-  <details><summary>開始設定</summary><label>ステージ<select id="stage" ${m.ply || replay ? 'disabled' : ''}>${STAGES.map((s, i) => `<option value="${i}" ${m.stage === i ? 'selected' : ''}>${s.name}</option>`).join('')}</select></label>${([0, 1] as const).map((p) => `<label>${name(p + 1)}英雄<select id="hero${p}" ${m.ply || replay ? 'disabled' : ''}>${HEROES.map((h, i) => `<option value="${i}" ${m.heroes[p] === i ? 'selected' : ''}>${h.name}</option>`).join('')}</select></label>`).join('')}</details>
-  <details><summary>演出設定</summary><label><input id="sound" type="checkbox" ${sound ? 'checked' : ''}>効果音</label><label><input id="motion" type="checkbox" ${motion ? 'checked' : ''}>演出軽減</label><select id="duration"><option value="short" ${duration === 'short' ? 'selected' : ''}>短</option><option value="standard" ${duration === 'standard' ? 'selected' : ''}>標準</option><option value="long" ${duration === 'long' ? 'selected' : ''}>長</option></select></details>
-  <details><summary>対局履歴・全手再生</summary><div id="history"></div></details><p aria-live="polite">${m.log.map(escape).join('・')}</p></aside></section></main>`;
-  app.querySelectorAll<HTMLButtonElement>('[data-index]').forEach((b) => {
-    b.onclick = () => {
-      if (!locked) commit({ kind: 'cell', index: Number(b.dataset.index) });
+  const choose = (command: RemixCommand) => {
+    if (!locked) select(command);
+  };
+  app.querySelectorAll<HTMLButtonElement>('[data-index]').forEach((cell) => {
+    cell.onclick = () => {
+      if (locked) return;
+      const index = Number(cell.dataset.index);
+      if (input === 'rotate') {
+        quadrant = quadrantOf(index);
+        choose({ kind: 'rotate', quadrant, direction });
+      } else choose({ kind: 'cell', index });
     };
-    b.onkeydown = (e) => {
-      const i = Number(b.dataset.index),
-        r = Math.floor(i / 8),
-        c = i % 8;
+    cell.onkeydown = (event) => {
+      const index = Number(cell.dataset.index),
+        row = Math.floor(index / 8),
+        col = index % 8;
       const target =
-        e.key === 'ArrowRight' && c < 7
-          ? i + 1
-          : e.key === 'ArrowLeft' && c > 0
-            ? i - 1
-            : e.key === 'ArrowDown' && r < 7
-              ? i + 8
-              : e.key === 'ArrowUp' && r > 0
-                ? i - 8
-                : i;
-      if (e.key.startsWith('Arrow')) {
-        e.preventDefault();
-        app.querySelector<HTMLButtonElement>('[data-index="' + target + '"]')?.focus();
+        event.key === 'ArrowRight' && col < 7
+          ? index + 1
+          : event.key === 'ArrowLeft' && col > 0
+            ? index - 1
+            : event.key === 'ArrowDown' && row < 7
+              ? index + 8
+              : event.key === 'ArrowUp' && row > 0
+                ? index - 8
+                : index;
+      if (event.key.startsWith('Arrow')) {
+        event.preventDefault();
+        app.querySelector<HTMLButtonElement>(`[data-index="${target}"]`)?.focus();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        session.cancel();
+        if (practice) practice.cancelled = true;
+        render();
       }
     };
   });
-  button('local', () => {
-    mode = 'local';
-    start();
-  });
-  button('ai', () => {
-    mode = 'ai';
-    start();
-  });
-  button('new', () => start());
-  button('tutorial', () => {
-    lesson = 0;
+  on('place-mode', () => {
+    input = 'cell';
+    quadrant = null;
+    session.cancel();
     render();
   });
-  button('skill', () => commit({ kind: 'skill' }));
-  button('pass', () => commit({ kind: 'pass' }));
-  button('same', () => {
-    match = structuredClone(frames[0]);
-    frames = [structuredClone(match)];
+  on('rotate-mode', () => {
+    input = 'rotate';
+    quadrant = null;
+    session.cancel();
     render();
   });
-  button('swap', () => start(match.seed, match.stage, match.heroes, true));
-  const select = (id: string, fn: (value: string) => void) =>
+  app.querySelectorAll<HTMLButtonElement>('[data-quarter]').forEach((button) => {
+    button.onclick = () => {
+      quadrant = Number(button.dataset.quarter) as Quadrant;
+      choose({ kind: 'rotate', quadrant, direction });
+    };
+  });
+  for (const value of ['right', 'left'] as const)
+    on(value, () => {
+      direction = value;
+      if (quadrant !== null) choose({ kind: 'rotate', quadrant, direction });
+      else render();
+    });
+  on('confirm', () => {
+    void confirm();
+  });
+  on('cancel', () => {
+    session.cancel();
+    if (practice) practice.cancelled = true;
+    render();
+  });
+  on('local', () => start('local'));
+  on('ai', () => start('ai'));
+  on('new', () => start());
+  on('rematch', () => start(live.mode, true));
+  on('same', () => start(live.mode, true));
+  on('tutorial', () => lesson(0));
+  on('retry', () => {
+    if (practice) lesson(practice.index);
+  });
+  on('next', () => {
+    if (!practice?.success) return;
+    if (practice.index === PRACTICE.length - 1) {
+      interrupt();
+      practice = null;
+      input = 'cell';
+      quadrant = null;
+      notice = '練習完了。元の対局に戻りました。';
+      render();
+    } else lesson(practice.index + 1);
+  });
+  on('close-practice', () => {
+    interrupt();
+    practice = null;
+    input = 'cell';
+    quadrant = null;
+    notice = '元の対局に戻りました';
+    render();
+  });
+  app.querySelector<HTMLSelectElement>('#difficulty')?.addEventListener('change', (event) => {
+    level = (event.target as HTMLSelectElement).value as AiLevel;
+    interrupt();
+    render();
+  });
+  for (const id of ['sound', 'music', 'music-volume', 'sound-volume', 'motion', 'duration'])
     app
-      .querySelector<HTMLSelectElement>('#' + id)
-      ?.addEventListener('change', (e) => fn((e.target as HTMLSelectElement).value));
-  select('difficulty', (v) => {
-    level = v as AiLevel;
-    render();
-  });
-  select('stage', (v) => start(match.seed, Number(v)));
-  for (const p of [0, 1] as const)
-    select('hero' + p, (v) => {
-      match.heroes[p] = Number(v);
-      frames = [structuredClone(match)];
-      render();
-    });
-  for (const id of ['sound', 'motion'])
-    app.querySelector<HTMLInputElement>('#' + id)?.addEventListener('change', (e) => {
-      if (id === 'sound') sound = (e.target as HTMLInputElement).checked;
-      else motion = (e.target as HTMLInputElement).checked;
-      settings();
-      render();
-    });
-  select('duration', (v) => {
-    duration = v;
-    settings();
-    render();
-  });
-  readReplays<Match>().forEach((record) => {
-    const b = document.createElement('button');
-    b.textContent = record.date + ' ' + record.result;
-    b.onclick = () => {
+      .querySelector('#' + id)
+      ?.addEventListener(id.endsWith('volume') ? 'input' : 'change', (event) => {
+        const target = event.target as HTMLInputElement;
+        if (id === 'sound') sound = target.checked;
+        else if (id === 'music') music = target.checked;
+        else if (id === 'music-volume') musicVolume = Number(target.value) / 100;
+        else if (id === 'sound-volume') soundVolume = Number(target.value) / 100;
+        else if (id === 'motion') motion = target.checked;
+        else duration = target.value;
+        saveSettings();
+        if (id !== 'motion' && id !== 'duration') {
+          const output = app.querySelector('#' + id + '-value');
+          if (output) output.textContent = target.value + '%';
+          void unlockAudio();
+          return;
+        }
+        interrupt();
+        render();
+      });
+  records.forEach((record) => {
+    const button = document.createElement('button');
+    button.textContent = record.date + ' ' + record.result;
+    button.onclick = () => {
+      interrupt();
+      practice = null;
       replay = record;
       replayIndex = 0;
+      input = 'cell';
+      quadrant = null;
+      notice = '';
       render();
     };
-    app.querySelector('#history')?.append(b);
+    app.querySelector('#history')?.append(button);
   });
-  button('rprev', () => {
+  on('rprev', () => {
     replayIndex = Math.max(0, replayIndex - 1);
     render();
   });
-  button('rnext', () => {
-    replayIndex = Math.min(replay!.snapshots.length - 1, replayIndex + 1);
+  on('rnext', () => {
+    if (replay) replayIndex = Math.min(replay.frames.length - 1, replayIndex + 1);
     render();
   });
-  button('rclose', () => {
+  on('rclose', () => {
+    interrupt();
     replay = null;
+    notice = '元の対局に戻りました';
     render();
   });
-  button('restart', () => {
-    match = structuredClone(replay!.snapshots[0]);
-    frames = [structuredClone(match)];
-    replay = null;
-    render();
+  on('restart', () => {
+    if (replay) start(replay.mode, true, replay.frames[0].match.firstPlayer);
   });
-  app.querySelectorAll('details').forEach((d) => {
-    d.open = openSections.has(d.querySelector('summary')?.textContent);
+  app.querySelectorAll('details').forEach((details) => {
+    details.open = open.has(details.querySelector('summary')?.textContent);
   });
-  if (!animating && !replay && mode === 'ai' && match.turn === 2 && match.winner === null) {
-    const token = epoch;
-    worker = new Worker(new URL('./ai/rpg-worker.ts', import.meta.url), { type: 'module' });
-    worker.onmessage = (e: MessageEvent<Command>) => {
-      if (token === epoch) commit(e.data);
-    };
-    worker.onerror = () => {
-      if (token === epoch) {
-        notice = 'AI処理に失敗したため合法な代替手を使います';
-        commit(available(match)[0]);
-      }
-    };
-    worker.postMessage({ match, level });
-  }
+  if (!visual) runAi();
 }
+saveSettings();
+document.addEventListener(
+  'pointerdown',
+  () => {
+    void unlockAudio();
+  },
+  { capture: true },
+);
+document.addEventListener(
+  'keydown',
+  () => {
+    void unlockAudio();
+  },
+  { capture: true },
+);
+document.addEventListener('visibilitychange', () => {
+  void setAudioHidden(document.hidden);
+});
+window.addEventListener('pagehide', () => {
+  void setAudioHidden(true);
+});
+window.addEventListener('pageshow', () => {
+  void setAudioHidden(document.hidden);
+});
 render();

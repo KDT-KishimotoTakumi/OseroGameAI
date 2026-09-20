@@ -5,9 +5,9 @@ export interface Replay<T> {
   date: string;
 }
 const key = 'jiso.rpg.replays.v1';
-export function readReplays<T>(): Replay<T>[] {
+export function readReplays<T>(storageKey = key): Replay<T>[] {
   try {
-    const data: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
+    const data: unknown = JSON.parse(localStorage.getItem(storageKey) ?? '[]');
     return Array.isArray(data)
       ? data
           .filter(
@@ -24,9 +24,11 @@ export function readReplays<T>(): Replay<T>[] {
     return [];
   }
 }
-export function writeReplay<T>(record: Replay<T>): void {
+export function writeReplay<T>(record: Replay<T>, storageKey = key): void {
   localStorage.setItem(
-    key,
-    JSON.stringify([record, ...readReplays<T>().filter((r) => r.id !== record.id)].slice(0, 20)),
+    storageKey,
+    JSON.stringify(
+      [record, ...readReplays<T>(storageKey).filter((r) => r.id !== record.id)].slice(0, 20),
+    ),
   );
 }

@@ -1,0 +1,183 @@
+.board {
+  gap: 5px;
+}
+.cell.quarter-right {
+  border-right: 4px solid #7faabd;
+}
+.cell.quarter-bottom {
+  border-bottom: 4px solid #7faabd;
+}
+.selected-quarter {
+  background: #294451;
+  outline: 1px solid #ffe388;
+}
+.cell.preview-flip {
+  border: 2px dashed #ffe681;
+  box-shadow: inset 0 0 22px #ffe68144;
+}
+.selected-cell {
+  outline: 3px solid #fff;
+}
+.wave-mark {
+  position: absolute;
+  bottom: 3px;
+  right: 5px;
+  z-index: 3;
+  background: #ffe388;
+  color: #182330;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  font-weight: bold;
+}
+.hp-bars {
+  display: flex;
+  gap: 16px;
+  margin: 16px 0;
+}
+.hp-card {
+  flex: 1;
+  border: 1px solid #507383;
+  background: #0c2230;
+  border-radius: 10px;
+  padding: 12px;
+}
+.hp-value {
+  float: right;
+  font-variant-numeric: tabular-nums;
+}
+.hp-track {
+  height: 12px;
+  background: #030b13;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+.hp-track > div {
+  height: 100%;
+  background: #48eaff;
+}
+.orange-hp .hp-track > div {
+  background: #ffae63;
+}
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+button[aria-pressed='true'] {
+  outline: 2px solid #ffe388;
+}
+.preview-card {
+  border-color: #ffe388;
+}
+#attack-status {
+  font-size: 1.3rem;
+  color: #ffe388;
+  min-height: 2rem;
+  margin: 8px 0;
+}
+.result-card {
+  padding: 18px;
+  background: #153347;
+  border: 1px solid #75dbe8;
+  border-radius: 10px;
+}
+.game-layout {
+  grid-template-columns: minmax(560px, 760px) minmax(280px, 340px);
+  gap: 28px;
+}
+.panel button {
+  margin: 3px;
+}
+.tutorial-banner {
+  margin: 14px 0;
+  border: 1px solid #ffe388;
+  padding: 16px;
+  border-radius: 10px;
+  background: #243339;
+}
+.tutorial-banner p {
+  line-height: 1.7;
+}
+.mode-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.animation-stone {
+  position: fixed;
+  z-index: 20;
+  pointer-events: none;
+  border-radius: 50%;
+}
+.chain-pulse {
+  box-shadow: 0 0 50px #ffe388aa;
+}
+.turn-notice {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background: #02091455;
+}
+.turn-notice span {
+  max-width: min(80vw, 720px);
+  padding: 28px 44px;
+  border: 2px solid #79f5ff;
+  border-radius: 18px;
+  background: #092332f2;
+  color: #efffff;
+  box-shadow: 0 0 32px #39dce955;
+  font-size: clamp(24px, 3vw, 40px);
+  font-weight: bold;
+  text-align: center;
+}
+.flip-ring,
+.flip-particle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+}
+.flip-ring {
+  width: 64%;
+  height: 64%;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  box-shadow:
+    0 0 10px currentColor,
+    inset 0 0 6px currentColor;
+}
+.flip-particle {
+  width: 4px;
+  height: 4px;
+  background: currentColor;
+  border-radius: 50%;
+  box-shadow: 0 0 7px currentColor;
+}
+.audio-setting {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  margin: 12px 0;
+}
+.audio-setting input[type='range'] {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+.reduced-motion .flip-ring,
+.reduced-motion .flip-particle {
+  display: none;
+}
+.reduced-motion *,
+.reduced-motion .cell {
+  transition: none !important;
+  animation: none !important;
+}
