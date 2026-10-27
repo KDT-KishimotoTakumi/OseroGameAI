@@ -1,6 +1,6 @@
 import { chooseRemix } from './remix-search';
 import type { RemixMatch, Player } from '../domain/remix-types';
-import type { AiLevel } from './search';
+import type { RemixAiLevel as AiLevel } from './remix-search';
 self.onmessage = (
   event: MessageEvent<{
     match: RemixMatch;

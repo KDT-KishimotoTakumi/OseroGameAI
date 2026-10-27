@@ -4,7 +4,8 @@ test('3難易度、AI応答、先後交代と取消', async ({ page }) => {
     localStorage.setItem('jiso.settings', JSON.stringify({ motion: true, sound: false })),
   );
   await page.goto('/');
-  for (const level of ['beginner', 'standard', 'advanced']) {
+  await expect(page.locator('#difficulty option')).toHaveText(['ノーマル', 'ハード', 'スーパーハード']);
+  for (const level of ['standard', 'advanced', 'super-hard']) {
     await page.locator('#ai').click();
     await page.locator('#difficulty').selectOption(level);
     await page.locator('.cell[aria-disabled="false"]').first().click();

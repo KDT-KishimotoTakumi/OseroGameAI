@@ -1,6 +1,12 @@
 import { available, simulate } from '../domain/remix-match';
 import { other, type Player, type RemixMatch, type RemixCommand } from '../domain/remix-types';
 import type { AiLevel } from './search';
+export type RemixAiLevel = AiLevel | 'super-hard';
+export const difficultySettings = {
+  standard: { label: 'ノーマル', depth: 1, budgetMs: 800 },
+  advanced: { label: 'ハード', depth: 2, budgetMs: 1800 },
+  'super-hard': { label: 'スーパーハード', depth: 4, budgetMs: 2500 },
+} as const;
 export interface SearchOptions {
   seed?: number;
   budgetMs?: number;
@@ -19,7 +25,7 @@ function evaluate(match: RemixMatch, player: Player): number {
 }
 export function chooseRemix(
   match: RemixMatch,
-  level: AiLevel = 'standard',
+  level: RemixAiLevel = 'standard',
   options: SearchOptions = {},
 ): RemixCommand {
   const moves = available(match);
@@ -27,26 +33,41 @@ export function chooseRemix(
   let random = (options.seed ?? match.version + 1) >>> 0;
   random = (Math.imul(random, 1664525) + 1013904223) >>> 0;
   if (level === 'beginner') return moves[random % moves.length];
-  const now = options.now ?? (() => performance.now()),
-    deadline = now() + (options.budgetMs ?? (level === 'advanced' ? 1800 : 800));
-  let best = moves[0],
-    bestValue = -Infinity;
-  for (const command of moves) {
-    if (now() >= deadline) break;
-    const next = simulate(match, command).next;
-    let value = evaluate(next, match.turn);
-    if (level === 'advanced' && next.winner === null) {
-      let worst = Infinity;
-      for (const response of available(next)) {
-        if (now() >= deadline) break;
-        worst = Math.min(worst, evaluate(simulate(next, response).next, match.turn));
+  const settings = difficultySettings[level];
+  const now = options.now ?? (() => performance.now());
+  const deadline = now() + (options.budgetMs ?? settings.budgetMs);
+  const timeout = Symbol('探索時間終了');
+  const search = (state: RemixMatch, depth: number, alpha: number, beta: number): number => {
+    if (now() >= deadline) throw timeout;
+    if (depth === 0 || state.winner !== null) return evaluate(state, match.turn);
+    const maximize = state.turn === match.turn;
+    let value = maximize ? -Infinity : Infinity;
+    for (const command of available(state)) {
+      const score = search(simulate(state, command).next, depth - 1, alpha, beta);
+      value = maximize ? Math.max(value, score) : Math.min(value, score);
+      if (maximize) alpha = Math.max(alpha, value);
+      else beta = Math.min(beta, value);
+      if (alpha >= beta) break;
+    }
+    return value;
+  };
+  let best = moves[0];
+  // 全候補を比較し終えた深さの結果だけ採用し、時間切れの偏りを防ぐ。
+  try {
+    for (let depth = 1; depth <= settings.depth; depth++) {
+      let candidate = best, bestValue = -Infinity;
+      for (const command of [best, ...moves.filter((move) => move !== best)]) {
+        const value = search(simulate(match, command).next, depth - 1, bestValue, Infinity);
+        if (value > bestValue) {
+          bestValue = value;
+          candidate = command;
+        }
       }
-      if (worst !== Infinity) value = worst;
+      best = candidate;
+      if (bestValue === 100000) break;
     }
-    if (value > bestValue) {
-      bestValue = value;
-      best = command;
-    }
+  } catch (error) {
+    if (error !== timeout) throw error;
   }
   return best;
 }
