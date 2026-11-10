@@ -16,3 +16,14 @@ export function followUpDamage(after: RemixMatch, player: Player): number {
   }
   return best;
 }
+
+/** 相手の番の盤面で、相手が選べる着手・回転のうち最大のダメージ（反撃の危険度の目安）。 */
+export function replyDamage(after: RemixMatch): number {
+  if (after.winner !== null) return 0;
+  let best = 0;
+  for (const command of available(after)) {
+    if (command.kind === 'pass') continue;
+    best = Math.max(best, simulate(after, command).damage);
+  }
+  return best;
+}

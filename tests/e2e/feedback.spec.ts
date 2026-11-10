@@ -82,3 +82,43 @@ test('ページアイコンを設定し、読み込みエラーを出さない',
   const response = await page.request.get(new URL(href!, page.url()).toString());
   expect(response.status()).toBe(200);
 });
+
+test('攻撃の予告に、相手の次の番の最大ダメージ（反撃）を表示する', async ({ page }) => {
+  await open(page, { motion: true, sound: false, music: false });
+  await expect(page.locator('#turn-notice')).toHaveCount(0);
+  await page.locator('.cell[aria-disabled="false"]').first().click();
+  await expect(page.locator('#preview')).toContainText(
+    /相手の反撃：次の相手の番に最大 \d+ ダメージ/,
+  );
+  await page.locator('#rotate-mode').click();
+  await page.locator('[data-quarter="0"]').click();
+  await expect(page.locator('#preview')).toContainText(
+    /相手の反撃：次の相手の番に最大 \d+ ダメージ/,
+  );
+});
+
+test('終局後、勝利バナー内の再戦ボタンがスクロールせずに見え、押すと再戦する', async ({ page }) => {
+  test.setTimeout(180000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, { motion: true, sound: false, music: false });
+  for (let n = 0; n < 1000; n++) {
+    await expect
+      .poll(
+        async () =>
+          (await page.locator('#victory-rematch').count()) +
+          (await page.locator('#place-mode:not([disabled])').count()),
+      )
+      .toBeGreaterThan(0);
+    if (await page.locator('#victory-rematch').count()) break;
+    await page.locator('#place-mode').click();
+    await page.locator('.cell[aria-disabled="false"]').first().click();
+    await page.locator('#confirm').click();
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(page.locator('#victory-rematch')).toBeInViewport();
+  await expect(page.locator('.victory-banner')).toContainText(/HPが0|判定/);
+  await expect(page.locator('#rotation-rule')).toHaveText('対局は終了しました。');
+  await page.locator('#victory-rematch').click();
+  await expect(page.locator('#victory-banner')).toHaveCount(0);
+  await expect(page.locator('.status')).toContainText('0手');
+});

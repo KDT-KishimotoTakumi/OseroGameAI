@@ -10,7 +10,7 @@ import { TurnNotice } from './application/turn-notice';
 import { available, sameCommand } from './domain/remix-match';
 import { other, type RemixMatch, type RemixCommand, type Quadrant } from './domain/remix-types';
 import { quadrantOf } from './domain/remix-board';
-import { followUpDamage } from './domain/remix-insight';
+import { followUpDamage, replyDamage } from './domain/remix-insight';
 import { difficultySettings, type RemixAiLevel as AiLevel } from './ai/remix-search';
 import { boardMarkup, hpMarkup, playerName } from './presentation/remix-board';
 import { playRemixAttack } from './presentation/remix-animation';
@@ -104,6 +104,12 @@ const escape = (value: string) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!,
   );
 const currentSession = () => practice?.session ?? live;
+const endReasonText = (match: RemixMatch) =>
+  match.endReason === 'hp'
+    ? 'HPが0になったため終了'
+    : match.endReason === 'blocked'
+      ? '双方とも置けるマスがないため、HP→石数で判定'
+      : '攻撃なしが10手続いたため、HP→石数で判定';
 const resultLabel = (winner: number) => (winner === 0 ? '引き分け' : playerName(winner) + 'の勝利');
 // 勝敗バナーの登場演出は対局ごとに1回だけ再生する（再描画のたびに繰り返さない）。
 let victoryShown = '';
@@ -382,7 +388,7 @@ function render(visual?: RemixMatch) {
     const key = `${live.generation}:${actual.version}`;
     const winnerClass =
       actual.winner === 1 ? 'victory-cyan' : actual.winner === 2 ? 'victory-orange' : 'victory-draw';
-    victory = `<section class="victory-banner ${winnerClass} ${victoryShown === key ? '' : 'victory-enter'}"><strong id="victory-banner">${resultLabel(actual.winner)}</strong></section>`;
+    victory = `<section class="victory-banner ${winnerClass} ${victoryShown === key ? '' : 'victory-enter'}"><strong id="victory-banner">${resultLabel(actual.winner)}</strong><p class="victory-reason">${endReasonText(actual)}</p><button id="victory-rematch">先後を交代して再戦</button></section>`;
     victoryShown = key;
   }
   document.documentElement.classList.toggle('guide-open', guide !== null);
@@ -394,10 +400,10 @@ function render(visual?: RemixMatch) {
  <nav class="mode-toolbar"><button id="local">2人対戦</button><button id="ai">AI対戦</button><button id="tutorial">練習モード</button><button id="guide">遊び方ガイド</button><button id="new">新しい対局</button><button id="rematch">先後を交代して再戦</button><label>難易度<select id="difficulty">${Object.entries(difficultySettings).map(([value, setting]) => `<option value="${value}" ${level === value ? 'selected' : ''}>${setting.label}</option>`).join('')}</select></label></nav>
  ${practice ? `<section class="tutorial-banner"><h2>${PRACTICE[practice.index].title}</h2><p>${PRACTICE[practice.index].text}</p><p id="practice-progress">${practice.success ? '練習成功' : '練習中'} ${practice.index + 1} / ${PRACTICE.length}</p><button id="retry">この練習をやり直す</button><button id="next" ${practice.success ? '' : 'disabled'}>${practice.index === PRACTICE.length - 1 ? '練習を完了' : '次の練習へ'}</button><button id="close-practice">元の対局に戻る</button></section>` : ''}
  ${victory}${hpMarkup(current)}<p role="status">${escape(notice)}</p><section class="game-layout"><div class="board-wrap">${boardMarkup(current, { locked, input, preview, quadrant: input === 'rotate' ? quadrant : null })}<p>白点：着手できる場所 ／ 太線：4つの区画 ／ 黄色の番号：反転する順番</p><p id="attack-status" aria-live="polite">${replay ? `${replay.frames[replayIndex].waves?.length ?? 0}連鎖・${replay.frames[replayIndex].damage ?? 0}ダメージ` : escape(attackStatus)}</p>
- ${replay ? `<section class="result-card"><p>リプレイ ${replayIndex}/${replay.frames.length - 1}手</p><button id="rprev" ${replayIndex === 0 ? 'disabled' : ''}>前の手</button><button id="rnext" ${replayIndex === replay.frames.length - 1 ? 'disabled' : ''}>次の手</button><button id="rclose">対局へ戻る</button><button id="restart">この開始条件の先後を交代して再戦</button></section>` : actual.winner !== null && !practice && !visual && !session.busy ? `<section class="result-card"><h2>対局結果</h2><p>${actual.endReason === 'hp' ? 'HPが0になったため終了' : actual.endReason === 'blocked' ? '双方とも置けるマスがないため、HP→石数で判定' : '攻撃なしが10手続いたため、HP→石数で判定'}</p><button id="same">先後を交代して再戦</button></section>` : ''}</div>
- <aside class="panel"><section class="panel-card"><h2>自分の番の操作</h2><div class="action-row"><button id="place-mode" aria-pressed="${input === 'cell'}" ${locked ? 'disabled' : ''}>石を置く</button><button id="rotate-mode" aria-pressed="${input === 'rotate'}" ${locked || !rotateAllowed ? 'disabled' : ''}>区画を回す</button></div><p id="rotation-rule">${rotateAllowed ? '回転できます。置けるマスがない番は自動でパスします。' : '前の自分の番に回したので、今回は石を置いてください。'}</p>
+ ${replay ? `<section class="result-card"><p>リプレイ ${replayIndex}/${replay.frames.length - 1}手</p><button id="rprev" ${replayIndex === 0 ? 'disabled' : ''}>前の手</button><button id="rnext" ${replayIndex === replay.frames.length - 1 ? 'disabled' : ''}>次の手</button><button id="rclose">対局へ戻る</button><button id="restart">この開始条件の先後を交代して再戦</button></section>` : actual.winner !== null && !practice && !visual && !session.busy ? `<section class="result-card"><h2>対局結果</h2><p>${endReasonText(actual)}</p><button id="same">先後を交代して再戦</button></section>` : ''}</div>
+ <aside class="panel"><section class="panel-card"><h2>自分の番の操作</h2><div class="action-row"><button id="place-mode" aria-pressed="${input === 'cell'}" ${locked ? 'disabled' : ''}>石を置く</button><button id="rotate-mode" aria-pressed="${input === 'rotate'}" ${locked || !rotateAllowed ? 'disabled' : ''}>区画を回す</button></div><p id="rotation-rule">${current.winner !== null && !replay ? '対局は終了しました。' : rotateAllowed ? '回転できます。置けるマスがない番は自動でパスします。' : '前の自分の番に回したので、今回は石を置いてください。'}</p>
  ${input === 'rotate' ? `<p>回す区画を選ぶ</p><div class="action-row">${['左上', '右上', '左下', '右下'].map((label, index) => `<button data-quarter="${index}" aria-pressed="${quadrant === index}" ${locked ? 'disabled' : ''}>${label}</button>`).join('')}</div><div class="action-row"><button id="right" aria-pressed="${direction === 'right'}" ${locked ? 'disabled' : ''}>右回り ↻</button><button id="left" aria-pressed="${direction === 'left'}" ${locked ? 'disabled' : ''}>左回り ↺</button></div>` : '<p>白点のマスをクリックすると攻撃予告が出ます。</p>'}</section>
- <section class="panel-card preview-card"><h2>攻撃の予告</h2><p id="preview">${preview ? `${preview.waves.length}連鎖 ／ 合計 ${preview.damage}ダメージ<br>相手HP：${actual.hp[other(actual.turn)]} → ${preview.next.hp[other(actual.turn)]}${preview.command.kind === 'rotate' ? `<br><span class="follow-up">布石：次の自分の番に最大 ${followUpDamage(preview.next, actual.turn)} ダメージを狙える形（相手の手で変わります）</span>` : ''}` : '操作を選ぶと反転する石とダメージを表示します。'}</p><button id="confirm" ${locked || !preview ? 'disabled' : ''}>攻撃を決定</button><button id="cancel" ${locked || !preview ? 'disabled' : ''}>取り消す</button></section>
+ <section class="panel-card preview-card"><h2>攻撃の予告</h2><p id="preview">${preview ? `${preview.waves.length}連鎖 ／ 合計 ${preview.damage}ダメージ<br>相手HP：${actual.hp[other(actual.turn)]} → ${preview.next.hp[other(actual.turn)]}<br><span class="threat">相手の反撃：次の相手の番に最大 ${replyDamage(preview.next)} ダメージ</span>${preview.command.kind === 'rotate' ? `<br><span class="follow-up">布石：次の自分の番に最大 ${followUpDamage(preview.next, actual.turn)} ダメージを狙える形（相手の手で変わります）</span>` : ''}` : '操作を選ぶと反転する石とダメージを表示します。'}</p><button id="confirm" ${locked || !preview ? 'disabled' : ''}>攻撃を決定</button><button id="cancel" ${locked || !preview ? 'disabled' : ''}>取り消す</button></section>
  <section class="panel-card"><h2>勝ち方</h2><p>反転1個で1ダメージ。連続攻撃で相手HPを0にすると勝ち。</p><p id="quiet">攻撃なし：${actual.quiet} / 10手</p><p>10手続いたら残りHP、同じなら石数で判定。双方とも置けない場合も、HP→石数で判定します。</p></section>
  
  <details><summary>対局履歴・全手再生</summary><div id="history"></div></details></aside></section></main>`;
@@ -506,6 +512,7 @@ function render(visual?: RemixMatch) {
   on('new', () => start());
   on('rematch', () => start(live.mode, true));
   on('same', () => start(live.mode, true));
+  on('victory-rematch', () => start(live.mode, true));
   on('tutorial', () => lesson(0));
   on('guide', () => {
     interrupt();

@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { available, createRemixMatch, simulate } from '../../src/domain/remix-match';
-import { followUpDamage } from '../../src/domain/remix-insight';
+import { followUpDamage, replyDamage } from '../../src/domain/remix-insight';
 
 it('回転後の盤面で、次の自分の番に石を置いて狙える最大ダメージを返す', () => {
   const match = createRemixMatch();
@@ -37,4 +37,27 @@ it('回転直後の番は石を置く規則に従い、回転は候補に含め�
       .map((move) => simulate({ ...structuredClone(after), turn: 1 }, move).damage),
   );
   expect(followUpDamage(after, 1)).toBe(placeOnly);
+});
+it('相手の次の番に狙える最大ダメージは、相手が選べる着手と回転の最大値', () => {
+  const match = createRemixMatch();
+  const move = available(match).find((command) => command.kind === 'cell')!;
+  const after = simulate(match, move).next;
+  const copy = structuredClone(after);
+  const expected = Math.max(
+    0,
+    ...available(after)
+      .filter((command) => command.kind !== 'pass')
+      .map((command) => simulate(after, command).damage),
+  );
+  expect(available(after).some((command) => command.kind === 'rotate')).toBe(true);
+  expect(replyDamage(after)).toBe(expected);
+  expect(after).toEqual(copy);
+});
+it('相手が置けない・終局済みなら反撃は0', () => {
+  const ended = createRemixMatch();
+  ended.winner = 1;
+  expect(replyDamage(ended)).toBe(0);
+  const blocked = createRemixMatch();
+  blocked.board.fill(1);
+  expect(replyDamage(blocked)).toBe(0);
 });
