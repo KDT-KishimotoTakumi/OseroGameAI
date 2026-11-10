@@ -11,4 +11,3 @@ export function flips(board: Board, index: number, player: 1 | 2): number[] {
 }
 export function legalMoves(board: Board, player: 1 | 2): number[] { return board.flatMap((v, i) => v === 0 && flips(board, i, player).length ? [i] : []); }
 export function scores(board: Board): [number, number] { return [board.filter((v) => v === 1).length, board.filter((v) => v === 2).length]; }
-export function applyPlace(board: Board, index: number, player: 1 | 2): Board { const changed = flips(board, index, player); if (!changed.length) throw new Error('そのマスには置けません'); const next = [...board] as Board; next[index] = player; for (const i of changed) next[i] = player; return next; }

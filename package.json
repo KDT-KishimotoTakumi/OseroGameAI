@@ -17,7 +17,6 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "validate:openings": "tsx tools/validate-openings.ts",
     "benchmark": "tsx tools/benchmark-balance.ts"
   },
   "devDependencies": {

@@ -12,25 +12,6 @@
     color: #ffe29a;
   }
 }
-.portrait {
-  position: absolute;
-  inset: 12% 10% 18%;
-  background-image: url('/assets/companions.svg');
-  background-size: 200% 100%;
-  background-position: left center;
-  background-repeat: no-repeat;
-}
-.orange-portrait {
-  background-position: right center;
-}
-.base-state {
-  position: absolute;
-  bottom: 1px;
-  left: 0;
-  right: 0;
-  font-size: 11px;
-  color: #fff;
-}
 .shell button:not(.cell),
 .shell select {
   padding: 9px;
@@ -63,9 +44,6 @@
   font-size: 11px;
   color: #c3e0ed;
   z-index: 2;
-}
-.terrain-mark {
-  font-size: 10px;
 }
 .cell[aria-disabled='true'] {
   cursor: default;

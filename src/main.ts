@@ -11,6 +11,12 @@ import { boardMarkup, hpMarkup, playerName } from './presentation/remix-board';
 import { playRemixAttack } from './presentation/remix-animation';
 import { PRACTICE, lessonSuccess } from './presentation/remix-tutorial';
 import {
+  GUIDE_STEPS,
+  markGuideSeen,
+  moveGuideStep,
+  shouldShowGuide,
+} from './presentation/onboarding';
+import {
   readRemixReplays,
   saveRemixReplay,
   type RemixReplay,
@@ -67,6 +73,15 @@ try {
 } catch {
   notice = '設定を初期化しました';
 }
+const storage = (() => {
+  try {
+    return localStorage;
+  } catch {
+    return null;
+  }
+})();
+// 初回ガイド表示中は手番案内とAIを止め、閉じてから対局を進める。
+let guide: number | null = shouldShowGuide(storage) ? 0 : null;
 const escape = (value: string) =>
   value.replace(
     /[&<>"']/g,
@@ -122,6 +137,11 @@ function lesson(index: number) {
   notice = '';
   attackStatus = '練習の説明に沿って操作してください';
   render();
+}
+function closeGuide() {
+  guide = null;
+  markGuideSeen(storage);
+  window.scrollTo(0, 0);
 }
 function select(command: RemixCommand) {
   const session = currentSession();
@@ -237,6 +257,7 @@ function on(id: string, action: () => void) {
 }
 function runAi() {
   if (
+    guide !== null ||
     turnNotice.active ||
     worker ||
     practice ||
@@ -284,7 +305,14 @@ function runAi() {
   });
 }
 function render(visual?: RemixMatch) {
-  if (!visual && !practice && !replay && !live.busy && live.match.winner === null) {
+  if (
+    guide === null &&
+    !visual &&
+    !practice &&
+    !replay &&
+    !live.busy &&
+    live.match.winner === null
+  ) {
     const generation = live.generation,
       version = live.match.version;
     const passing = available(live.match)[0]?.kind === 'pass';
@@ -315,6 +343,7 @@ function render(visual?: RemixMatch) {
     rotateAllowed = commands.some((command) => command.kind === 'rotate');
   const aiTurn = !practice && live.mode === 'ai' && actual.turn !== live.human;
   const locked =
+    guide !== null ||
     turnNotice.active ||
     !!replay ||
     session.busy ||
@@ -323,12 +352,13 @@ function render(visual?: RemixMatch) {
     !!practice?.success;
   const preview = session.busy || replay ? null : session.selection;
   setMusicPlaying(!replay && (actual.winner === null || session.busy));
+  document.documentElement.classList.toggle('guide-open', guide !== null);
   document.documentElement.classList.toggle(
     'reduced-motion',
     motion || matchMedia('(prefers-reduced-motion: reduce)').matches,
   );
   app.innerHTML = `<main class="shell"><p class="width-warning">横幅1280px以上の画面でプレイしてください。</p><header><div><h1>リミックス・オセロ</h1><p>盤面を回して、連続攻撃で相手のHPを0にする。</p><p>石を置くか、4×4区画を右・左に回すか。どちらか1つで勝負。</p></div><div class="status" aria-live="polite"><strong>${actual.winner !== null ? (actual.winner === 0 ? '引き分け' : playerName(actual.winner) + 'の勝利') : playerName(actual.turn) + 'の手番'}</strong><span>${actual.ply}手　${replay ? '履歴再生' : practice ? '練習モード' : live.mode === 'ai' ? 'あなた：シアン ／ AI：オレンジ' : '2人対戦'}</span><span>${actual.winner !== null ? '対局終了' : aiTurn ? 'AIが思考・攻撃中' : '自分の操作を選んでください'}</span></div></header>
- <nav class="mode-toolbar"><button id="local">2人対戦</button><button id="ai">AI対戦</button><button id="tutorial">練習モード</button><button id="new">新しい対局</button><button id="rematch">先後を交代して再戦</button><label>難易度<select id="difficulty">${Object.entries(difficultySettings).map(([value, setting]) => `<option value="${value}" ${level === value ? 'selected' : ''}>${setting.label}</option>`).join('')}</select></label></nav>
+ <nav class="mode-toolbar"><button id="local">2人対戦</button><button id="ai">AI対戦</button><button id="tutorial">練習モード</button><button id="guide">遊び方ガイド</button><button id="new">新しい対局</button><button id="rematch">先後を交代して再戦</button><label>難易度<select id="difficulty">${Object.entries(difficultySettings).map(([value, setting]) => `<option value="${value}" ${level === value ? 'selected' : ''}>${setting.label}</option>`).join('')}</select></label></nav>
  ${practice ? `<section class="tutorial-banner"><h2>${PRACTICE[practice.index].title}</h2><p>${PRACTICE[practice.index].text}</p><p id="practice-progress">${practice.success ? '練習成功' : '練習中'} ${practice.index + 1} / ${PRACTICE.length}</p><button id="retry">この練習をやり直す</button><button id="next" ${practice.success ? '' : 'disabled'}>${practice.index === PRACTICE.length - 1 ? '練習を完了' : '次の練習へ'}</button><button id="close-practice">元の対局に戻る</button></section>` : ''}
  ${hpMarkup(current)}<p role="status">${escape(notice)}</p><section class="game-layout"><div class="board-wrap">${boardMarkup(current, { locked, input, preview, quadrant: input === 'rotate' ? quadrant : null })}<p>白点：着手できる場所 ／ 太線：4つの区画 ／ 黄色の番号：反転する順番</p><p id="attack-status" aria-live="polite">${replay ? `${replay.frames[replayIndex].waves?.length ?? 0}連鎖・${replay.frames[replayIndex].damage ?? 0}ダメージ` : escape(attackStatus)}</p>
  ${replay ? `<section class="result-card"><p>リプレイ ${replayIndex}/${replay.frames.length - 1}手</p><button id="rprev" ${replayIndex === 0 ? 'disabled' : ''}>前の手</button><button id="rnext" ${replayIndex === replay.frames.length - 1 ? 'disabled' : ''}>次の手</button><button id="rclose">対局へ戻る</button><button id="restart">この開始条件の先後を交代して再戦</button></section>` : actual.winner !== null && !practice ? `<section class="result-card"><h2>対局結果</h2><p>${actual.endReason === 'hp' ? 'HPが0になったため終了' : actual.endReason === 'blocked' ? '双方とも置けるマスがないため、HP→石数で判定' : '攻撃なしが10手続いたため、HP→石数で判定'}</p><button id="same">先後を交代して再戦</button></section>` : ''}</div>
@@ -343,6 +373,32 @@ function render(visual?: RemixMatch) {
       'beforeend',
       `<div id="turn-notice" class="turn-notice" aria-live="polite"><span>${escape(turnNotice.text)}</span></div>`,
     );
+  if (guide !== null) {
+    const step = GUIDE_STEPS[guide],
+      last = guide === GUIDE_STEPS.length - 1;
+    const target = step.target ? app.querySelector<HTMLElement>(step.target) : null;
+    const focus = target?.closest<HTMLElement>('.panel-card') ?? target;
+    focus?.classList.add('guide-focus');
+    // 画面下部の説明ダイアログに隠れないよう、強調要素を中央へ寄せる。
+    focus?.scrollIntoView({ block: 'center' });
+    app.insertAdjacentHTML(
+      'beforeend',
+      `<div class="guide-backdrop"></div><section id="guide-dialog" class="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guide-title"><p class="guide-progress">遊び方ガイド ${guide + 1} / ${GUIDE_STEPS.length}</p><h2 id="guide-title">${step.title}</h2><p>${step.text}</p><div class="guide-actions"><button id="guide-skip">スキップ</button><span></span><button id="guide-prev" ${guide === 0 ? 'disabled' : ''}>戻る</button>${last ? '<button id="guide-practice" class="guide-primary">練習モードを始める</button><button id="guide-play">対局を始める</button>' : '<button id="guide-next" class="guide-primary">次へ</button>'}</div></section>`,
+    );
+    const dialog = app.querySelector<HTMLElement>('#guide-dialog')!;
+    dialog.querySelector<HTMLButtonElement>('.guide-primary')?.focus();
+    dialog.onkeydown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeGuide();
+        render();
+      } else if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        guide = moveGuideStep(guide ?? 0, event.key === 'ArrowRight' ? 1 : -1);
+        render();
+      }
+    };
+  }
   const choose = (command: RemixCommand) => {
     if (!locked) select(command);
   };
@@ -418,6 +474,28 @@ function render(visual?: RemixMatch) {
   on('rematch', () => start(live.mode, true));
   on('same', () => start(live.mode, true));
   on('tutorial', () => lesson(0));
+  on('guide', () => {
+    interrupt();
+    guide = 0;
+    render();
+  });
+  on('guide-next', () => {
+    guide = moveGuideStep(guide ?? 0, 1);
+    render();
+  });
+  on('guide-prev', () => {
+    guide = moveGuideStep(guide ?? 0, -1);
+    render();
+  });
+  for (const id of ['guide-skip', 'guide-play'])
+    on(id, () => {
+      closeGuide();
+      render();
+    });
+  on('guide-practice', () => {
+    closeGuide();
+    lesson(0);
+  });
   on('retry', () => {
     if (practice) lesson(practice.index);
   });

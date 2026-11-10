@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-表示されたURLをChrome、Edge、Firefoxで開きます。白点のマス、または区画と回転方向を選び、予告を確認して「攻撃を決定」。初めてなら「練習モード」から始めてください。
+表示されたURLをChrome、Edge、Firefoxで開きます。白点のマス、または区画と回転方向を選び、予告を確認して「攻撃を決定」。初めて開くと遊び方ガイドが表示されます（「遊び方ガイド」ボタンで再表示）。続けて「練習モード」で操作を体験できます。
 
 手番の案内は中央に2秒表示します。置けるマスがない番は自動でパスし、双方とも置けない場合は残りHP→石数で終了します。
 
@@ -31,7 +31,7 @@ npm run test:e2e
 
 `npm run test:coverage` は現行ルールの単体テスト対象に、文・分岐・関数・行数の各90%以上を必須とします。画面・Workerを含む操作経路は `npm run test:e2e` でChromium、Firefox、Chrome、Edgeの4ブラウザを確認します。
 
-ブラウザ未導入なら `npx playwright install chromium firefox`。Chrome・Edgeは端末に導入済みのものを利用。`validate:openings` は旧ルール資料の検証です。
+ブラウザ未導入なら `npx playwright install chromium firefox`。Chrome・Edgeは端末に導入済みのものを利用。
 
 ## 資料
 
@@ -39,4 +39,5 @@ npm run test:e2e
 - [実装状況](docs/IMPLEMENTED.md)・[検証](docs/VALIDATION.md)・[予定](docs/PLAN.md)
 - [インタビュー](docs/INTERVIEW_BOARD_REMIX.md)
 - [要件](specs/002-board-remix/spec.md)・[計画](specs/002-board-remix/plan.md)・[タスク](specs/002-board-remix/tasks.md)
+- [導入済みAgent Skills](.claude/skills/README.md)
 - [規約](PROAGENTS.md)・[Spec Kit導入](docs/SPECKIT_SETUP.md)
