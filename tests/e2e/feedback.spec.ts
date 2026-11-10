@@ -112,13 +112,32 @@ test('終局後、勝利バナー内の再戦ボタンがスクロールせず�
     if (await page.locator('#victory-rematch').count()) break;
     await page.locator('#place-mode').click();
     await page.locator('.cell[aria-disabled="false"]').first().click();
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.locator('#confirm').click();
   }
-  await page.evaluate(() => window.scrollTo(0, 0));
+  // 盤面を下へスクロールした状態で決着しても、勝利バナー全体が画面内に入る。
+  await expect(page.locator('#victory-banner')).toBeInViewport({ ratio: 1 });
   await expect(page.locator('#victory-rematch')).toBeInViewport();
+  await expect(page.locator('.panel-card').first()).not.toContainText('白点のマスをクリック');
   await expect(page.locator('.victory-banner')).toContainText(/HPが0|判定/);
   await expect(page.locator('#rotation-rule')).toHaveText('対局は終了しました。');
   await page.locator('#victory-rematch').click();
   await expect(page.locator('#victory-banner')).toHaveCount(0);
   await expect(page.locator('.status')).toContainText('0手');
+});
+
+test('相手の反撃で自分のHPが0になり得る手には警告を出す', async ({ page }) => {
+  // 開始HPだけを試験用に変更し、製品コードに局面注入APIを追加しない。
+  await page.route('**/src/domain/remix-match.ts*', async (route) => {
+    const response = await route.fetch();
+    const source = (await response.text()).replace(/hp:\s*\{\s*1:\s*50,/, 'hp: { 1: 1,');
+    await route.fulfill({ response, body: source });
+  });
+  await open(page, { motion: true, sound: false, music: false });
+  await expect(page.locator('#turn-notice')).toHaveCount(0);
+  await expect(page.locator('#hp1')).toHaveText('1 / 50 HP');
+  await page.locator('.cell[aria-disabled="false"]').first().click();
+  await expect(page.locator('#danger')).toContainText('相手の反撃でHPが0になる危険があります');
+  await page.locator('#cancel').click();
+  await expect(page.locator('#danger')).toHaveCount(0);
 });

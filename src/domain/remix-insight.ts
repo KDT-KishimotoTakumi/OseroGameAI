@@ -27,3 +27,9 @@ export function replyDamage(after: RemixMatch): number {
   }
   return best;
 }
+
+/** 決定後の盤面で、相手の反撃が自分の残りHP以上なら負ける危険がある（決着済みなら危険なし）。 */
+export function lethalReply(after: RemixMatch, player: Player): boolean {
+  if (after.winner !== null) return false;
+  return replyDamage(after) >= after.hp[player];
+}
