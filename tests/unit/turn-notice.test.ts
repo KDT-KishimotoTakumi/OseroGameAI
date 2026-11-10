@@ -30,3 +30,19 @@ it('途中の再開始や練習移動で古いパス・AI開始を取り消す',
   vi.advanceTimersByTime(1000);
   expect(next).toHaveBeenCalledTimes(1);
 });
+it('操作で案内を飛ばすと即座に手番を始め、二重に開始しない', () => {
+  vi.useFakeTimers();
+  const notice = new TurnNotice();
+  const done = vi.fn();
+  expect(notice.skip()).toBe(false);
+  notice.begin('0:0', 'あなたの番です', done);
+  vi.advanceTimersByTime(300);
+  expect(notice.skip()).toBe(true);
+  expect(notice.active).toBe(false);
+  expect(notice.text).toBe('');
+  expect(done).toHaveBeenCalledTimes(1);
+  vi.advanceTimersByTime(5000);
+  expect(done).toHaveBeenCalledTimes(1);
+  expect(notice.skip()).toBe(false);
+  expect(notice.begin('0:0', '同じ番', done)).toBe(false);
+});

@@ -10,6 +10,7 @@ import { TurnNotice } from './application/turn-notice';
 import { available, sameCommand } from './domain/remix-match';
 import { other, type RemixMatch, type RemixCommand, type Quadrant } from './domain/remix-types';
 import { quadrantOf } from './domain/remix-board';
+import { followUpDamage } from './domain/remix-insight';
 import { difficultySettings, type RemixAiLevel as AiLevel } from './ai/remix-search';
 import { boardMarkup, hpMarkup, playerName } from './presentation/remix-board';
 import { playRemixAttack } from './presentation/remix-animation';
@@ -389,14 +390,14 @@ function render(visual?: RemixMatch) {
     'reduced-motion',
     motion || matchMedia('(prefers-reduced-motion: reduce)').matches,
   );
-  app.innerHTML = `<main class="shell"><p class="width-warning">横幅1280px以上の画面でプレイしてください。</p><header><div><h1>リミックス・オセロ</h1><p>盤面を回して、連続攻撃で相手のHPを0にする。</p><p>石を置くか、4×4区画を右・左に回すか。どちらか1つで勝負。</p></div><div class="header-side"><details class="settings-menu"><summary>演出設定</summary><div class="settings-panel"><label><input id="music" type="checkbox" ${music ? 'checked' : ''}>BGM</label><label class="audio-setting" for="music-volume">BGM音量<output id="music-volume-value">${Math.round(musicVolume * 100)}%</output><input id="music-volume" type="range" min="0" max="100" value="${Math.round(musicVolume * 100)}"></label><label><input id="sound" type="checkbox" ${sound ? 'checked' : ''}>効果音</label><label class="audio-setting" for="sound-volume">SE音量<output id="sound-volume-value">${Math.round(soundVolume * 100)}%</output><input id="sound-volume" type="range" min="0" max="100" value="${Math.round(soundVolume * 100)}"></label><p>音は最初のクリック・キー操作後に始まります。別のタブへ移ると一時停止します。</p><label><input id="motion" type="checkbox" ${motion ? 'checked' : ''}>演出軽減</label><select id="duration" aria-label="演出速度">${['short', 'standard', 'long'].map((value, index) => `<option value="${value}" ${duration === value ? 'selected' : ''}>${['短', '標準', '長'][index]}</option>`).join('')}</select><label class="impact-setting">迫力<select id="impact" aria-label="演出の迫力">${Object.entries(IMPACT_LABELS).map(([value, label]) => `<option value="${value}" ${impact === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div></details><div class="status" aria-live="polite"><strong>${actual.winner !== null ? resultLabel(actual.winner) : playerName(actual.turn) + 'の手番'}</strong><span>${actual.ply}手　${replay ? '履歴再生' : practice ? '練習モード' : live.mode === 'ai' ? 'あなた：シアン ／ AI：オレンジ' : '2人対戦'}</span><span>${actual.winner !== null ? '対局終了' : aiTurn ? 'AIが思考・攻撃中' : '自分の操作を選んでください'}</span></div></div></header>
+  app.innerHTML = `<main class="shell"><p class="width-warning">横幅1280px以上の画面でプレイしてください。</p><header><div><h1>リミックス・オセロ</h1><p>盤面を回して、連続攻撃で相手のHPを0にする。</p><p>石を置くか、4×4区画を右・左に回すか。どちらか1つで勝負。</p></div><div class="header-side"><details class="settings-menu"><summary>演出設定</summary><div class="settings-panel"><label><input id="music" type="checkbox" ${music ? 'checked' : ''}>BGM</label><label class="audio-setting" for="music-volume">BGM音量<output id="music-volume-value">${Math.round(musicVolume * 100)}%</output><input id="music-volume" type="range" min="0" max="100" value="${Math.round(musicVolume * 100)}"></label><label><input id="sound" type="checkbox" ${sound ? 'checked' : ''}>効果音</label><label class="audio-setting" for="sound-volume">SE音量<output id="sound-volume-value">${Math.round(soundVolume * 100)}%</output><input id="sound-volume" type="range" min="0" max="100" value="${Math.round(soundVolume * 100)}"></label><p>音は最初のクリック・キー操作後に始まります。別のタブへ移ると一時停止します。</p><label><input id="motion" type="checkbox" ${motion ? 'checked' : ''}>演出軽減</label><select id="duration" aria-label="演出速度">${['short', 'standard', 'long'].map((value, index) => `<option value="${value}" ${duration === value ? 'selected' : ''}>${['短', '標準', '長'][index]}</option>`).join('')}</select><label class="impact-setting">迫力<select id="impact" aria-label="演出の迫力">${Object.entries(IMPACT_LABELS).map(([value, label]) => `<option value="${value}" ${impact === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div></details><div class="status" aria-live="polite"><strong>${current.winner !== null ? resultLabel(current.winner) : playerName(current.turn) + 'の手番'}</strong><span>${current.ply}手　${replay ? '履歴再生' : practice ? '練習モード' : live.mode === 'ai' ? 'あなた：シアン ／ AI：オレンジ' : '2人対戦'}</span><span>${current.winner !== null ? '対局終了' : aiTurn ? 'AIが思考・攻撃中' : '自分の操作を選んでください'}</span></div></div></header>
  <nav class="mode-toolbar"><button id="local">2人対戦</button><button id="ai">AI対戦</button><button id="tutorial">練習モード</button><button id="guide">遊び方ガイド</button><button id="new">新しい対局</button><button id="rematch">先後を交代して再戦</button><label>難易度<select id="difficulty">${Object.entries(difficultySettings).map(([value, setting]) => `<option value="${value}" ${level === value ? 'selected' : ''}>${setting.label}</option>`).join('')}</select></label></nav>
  ${practice ? `<section class="tutorial-banner"><h2>${PRACTICE[practice.index].title}</h2><p>${PRACTICE[practice.index].text}</p><p id="practice-progress">${practice.success ? '練習成功' : '練習中'} ${practice.index + 1} / ${PRACTICE.length}</p><button id="retry">この練習をやり直す</button><button id="next" ${practice.success ? '' : 'disabled'}>${practice.index === PRACTICE.length - 1 ? '練習を完了' : '次の練習へ'}</button><button id="close-practice">元の対局に戻る</button></section>` : ''}
  ${victory}${hpMarkup(current)}<p role="status">${escape(notice)}</p><section class="game-layout"><div class="board-wrap">${boardMarkup(current, { locked, input, preview, quadrant: input === 'rotate' ? quadrant : null })}<p>白点：着手できる場所 ／ 太線：4つの区画 ／ 黄色の番号：反転する順番</p><p id="attack-status" aria-live="polite">${replay ? `${replay.frames[replayIndex].waves?.length ?? 0}連鎖・${replay.frames[replayIndex].damage ?? 0}ダメージ` : escape(attackStatus)}</p>
- ${replay ? `<section class="result-card"><p>リプレイ ${replayIndex}/${replay.frames.length - 1}手</p><button id="rprev" ${replayIndex === 0 ? 'disabled' : ''}>前の手</button><button id="rnext" ${replayIndex === replay.frames.length - 1 ? 'disabled' : ''}>次の手</button><button id="rclose">対局へ戻る</button><button id="restart">この開始条件の先後を交代して再戦</button></section>` : actual.winner !== null && !practice ? `<section class="result-card"><h2>対局結果</h2><p>${actual.endReason === 'hp' ? 'HPが0になったため終了' : actual.endReason === 'blocked' ? '双方とも置けるマスがないため、HP→石数で判定' : '攻撃なしが10手続いたため、HP→石数で判定'}</p><button id="same">先後を交代して再戦</button></section>` : ''}</div>
+ ${replay ? `<section class="result-card"><p>リプレイ ${replayIndex}/${replay.frames.length - 1}手</p><button id="rprev" ${replayIndex === 0 ? 'disabled' : ''}>前の手</button><button id="rnext" ${replayIndex === replay.frames.length - 1 ? 'disabled' : ''}>次の手</button><button id="rclose">対局へ戻る</button><button id="restart">この開始条件の先後を交代して再戦</button></section>` : actual.winner !== null && !practice && !visual && !session.busy ? `<section class="result-card"><h2>対局結果</h2><p>${actual.endReason === 'hp' ? 'HPが0になったため終了' : actual.endReason === 'blocked' ? '双方とも置けるマスがないため、HP→石数で判定' : '攻撃なしが10手続いたため、HP→石数で判定'}</p><button id="same">先後を交代して再戦</button></section>` : ''}</div>
  <aside class="panel"><section class="panel-card"><h2>自分の番の操作</h2><div class="action-row"><button id="place-mode" aria-pressed="${input === 'cell'}" ${locked ? 'disabled' : ''}>石を置く</button><button id="rotate-mode" aria-pressed="${input === 'rotate'}" ${locked || !rotateAllowed ? 'disabled' : ''}>区画を回す</button></div><p id="rotation-rule">${rotateAllowed ? '回転できます。置けるマスがない番は自動でパスします。' : '前の自分の番に回したので、今回は石を置いてください。'}</p>
  ${input === 'rotate' ? `<p>回す区画を選ぶ</p><div class="action-row">${['左上', '右上', '左下', '右下'].map((label, index) => `<button data-quarter="${index}" aria-pressed="${quadrant === index}" ${locked ? 'disabled' : ''}>${label}</button>`).join('')}</div><div class="action-row"><button id="right" aria-pressed="${direction === 'right'}" ${locked ? 'disabled' : ''}>右回り ↻</button><button id="left" aria-pressed="${direction === 'left'}" ${locked ? 'disabled' : ''}>左回り ↺</button></div>` : '<p>白点のマスをクリックすると攻撃予告が出ます。</p>'}</section>
- <section class="panel-card preview-card"><h2>攻撃の予告</h2><p id="preview">${preview ? `${preview.waves.length}連鎖 ／ 合計 ${preview.damage}ダメージ<br>相手HP：${actual.hp[other(actual.turn)]} → ${preview.next.hp[other(actual.turn)]}` : '操作を選ぶと反転する石とダメージを表示します。'}</p><button id="confirm" ${locked || !preview ? 'disabled' : ''}>攻撃を決定</button><button id="cancel" ${locked || !preview ? 'disabled' : ''}>取り消す</button></section>
+ <section class="panel-card preview-card"><h2>攻撃の予告</h2><p id="preview">${preview ? `${preview.waves.length}連鎖 ／ 合計 ${preview.damage}ダメージ<br>相手HP：${actual.hp[other(actual.turn)]} → ${preview.next.hp[other(actual.turn)]}${preview.command.kind === 'rotate' ? `<br><span class="follow-up">布石：次の自分の番に最大 ${followUpDamage(preview.next, actual.turn)} ダメージを狙える形（相手の手で変わります）</span>` : ''}` : '操作を選ぶと反転する石とダメージを表示します。'}</p><button id="confirm" ${locked || !preview ? 'disabled' : ''}>攻撃を決定</button><button id="cancel" ${locked || !preview ? 'disabled' : ''}>取り消す</button></section>
  <section class="panel-card"><h2>勝ち方</h2><p>反転1個で1ダメージ。連続攻撃で相手HPを0にすると勝ち。</p><p id="quiet">攻撃なし：${actual.quiet} / 10手</p><p>10手続いたら残りHP、同じなら石数で判定。双方とも置けない場合も、HP→石数で判定します。</p></section>
  
  <details><summary>対局履歴・全手再生</summary><div id="history"></div></details></aside></section></main>`;
@@ -626,6 +627,46 @@ document.addEventListener(
   'keydown',
   () => {
     void unlockAudio();
+  },
+  { capture: true },
+);
+// 手番案内はクリック・キー操作で飛ばせる。案内を閉じた操作は盤面・操作パネルへの入力として扱わない。
+// 上部のモード切替・設定は従来どおり押せる（新しい対局などをすぐ始められる）。
+let swallowClick = false;
+document.addEventListener(
+  'pointerdown',
+  (event) => {
+    swallowClick = false;
+    if (!turnNotice.active || guide !== null) return;
+    const target = event.target as Element;
+    // 盤面・操作不可のボタン・何もない所は案内を閉じるだけ。押せるボタン類（新しい対局・履歴など）はそのまま実行する。
+    if (target.closest?.('button:not([disabled]):not(.cell), select, summary, input, a, label')) return;
+    turnNotice.skip();
+    swallowClick = true;
+  },
+  { capture: true },
+);
+document.addEventListener('pointerup', () => setTimeout(() => (swallowClick = false)), {
+  capture: true,
+});
+document.addEventListener(
+  'click',
+  (event) => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    event.preventDefault();
+    event.stopPropagation();
+  },
+  { capture: true },
+);
+document.addEventListener(
+  'keydown',
+  (event) => {
+    if (!turnNotice.active || guide !== null) return;
+    if (['Tab', 'Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    turnNotice.skip();
   },
   { capture: true },
 );
