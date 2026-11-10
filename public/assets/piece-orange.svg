@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="7 7 86 86">
+  <!-- リミックス・オセロ用に作成した駒（orange）。外部素材なし。 -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="60%" stop-color="#ffa04a" stop-opacity=".55"/>
+      <stop offset="100%" stop-color="#ffa04a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4fbff"/>
+      <stop offset=".35" stop-color="#7d8c99"/>
+      <stop offset=".65" stop-color="#2b3540"/>
+      <stop offset="1" stop-color="#a9b8c4"/>
+    </linearGradient>
+    <radialGradient id="base" cx="40%" cy="35%" r="70%">
+      <stop offset="0" stop-color="#2c3742"/>
+      <stop offset="1" stop-color="#0a0f15"/>
+    </radialGradient>
+    <linearGradient id="gemA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff3dc"/>
+      <stop offset="1" stop-color="#ffa04a"/>
+    </linearGradient>
+    <linearGradient id="gemB" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffa04a"/>
+      <stop offset="1" stop-color="#5a2108"/>
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="50" fill="url(#glow)"/>
+  <circle cx="50" cy="50" r="42" fill="url(#rim)"/>
+  <circle cx="50" cy="50" r="37" fill="url(#base)"/>
+  <g stroke="#ffa04a" stroke-width="1.6" stroke-linecap="round" opacity=".9">
+    <path d="M50 14v5M50 81v5M14 50h5M81 50h5M24.5 24.5l3.5 3.5M72 72l3.5 3.5M75.5 24.5 72 28M28 72l-3.5 3.5"/>
+  </g>
+  <polygon points="50,24 72.5,37 72.5,63 50,76 27.5,63 27.5,37" fill="#9c4314"/>
+  <polygon points="50,24 72.5,37 50,50 27.5,37" fill="url(#gemA)"/>
+  <polygon points="72.5,37 72.5,63 50,76 50,50" fill="url(#gemB)"/>
+  <polygon points="27.5,37 50,50 50,76 27.5,63" fill="#ffa04a" opacity=".85"/>
+  <polygon points="50,33 62,40 62,54 50,61 38,54 38,40" fill="#fff3dc" opacity=".35"/>
+  <path d="M33 34 50 25" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".9"/>
+  <ellipse cx="38" cy="30" rx="14" ry="6" fill="#fff" opacity=".18" transform="rotate(-30 38 30)"/>
+</svg>

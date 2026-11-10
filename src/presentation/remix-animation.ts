@@ -2,6 +2,8 @@ import { quadrantCells } from '../domain/remix-board';
 import type { AttackResult, RemixMatch } from '../domain/remix-types';
 import { animateFlips } from './stone-animation';
 import { playFlipEffects } from './flip-effects';
+import { playChainImpact, playShockwave } from './impact-effects';
+import type { ImpactProfile } from './impact-profile';
 export interface AnimationHooks {
   show: (match: RemixMatch, label: string) => void;
   current: () => boolean;
@@ -9,6 +11,8 @@ export interface AnimationHooks {
   ms: number;
   reduced: boolean;
   onWave?: (chain: number) => void;
+  /** 追加演出の強さ。null（迫力なし・演出軽減）なら追加演出を行わない。 */
+  impact?: ImpactProfile | null;
 }
 async function waitAnimations(animations: Animation[], signal: AbortSignal) {
   const cancel = () => animations.forEach((animation) => animation.cancel());
@@ -52,7 +56,7 @@ export async function playRemixAttack(
         clone = stone.cloneNode(true) as HTMLElement;
       const style = getComputedStyle(stone);
       clone.className = 'animation-stone';
-      clone.style.cssText = `left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;background:${style.backgroundImage};box-shadow:${style.boxShadow};`;
+      clone.style.cssText = `left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;background:${style.backgroundImage} center/contain no-repeat;box-shadow:${style.boxShadow};`;
       stone.style.opacity = '0';
       document.body.append(clone);
       clones.push(clone);
@@ -77,9 +81,21 @@ export async function playRemixAttack(
     }
     if (!hooks.current()) return;
   }
+  const impact = hooks.impact ?? null;
   const visual = structuredClone(before);
   visual.board = [...result.moved];
   hooks.show(visual, result.command.kind === 'rotate' ? '区画を回転' : '石を置いて攻撃');
+  if (impact)
+    playShockwave(
+      root,
+      result.command.kind === 'rotate'
+        ? quadrantCells(result.command.quadrant)
+        : [result.command.index],
+      result.actor,
+      impact,
+      hooks.ms,
+      hooks.signal,
+    );
   let damage = 0;
   for (let layer = 0; layer < result.waves.length; layer++) {
     if (!hooks.current()) return;
@@ -91,6 +107,16 @@ export async function playRemixAttack(
     visual.hp[result.next.turn] = Math.max(0, before.hp[result.next.turn] - damage);
     hooks.show(visual, `${layer + 1}連鎖・${damage}ダメージ`);
     hooks.onWave?.(layer + 1);
+    if (impact)
+      playChainImpact(
+        root,
+        layer + 1,
+        result.waves[layer].length,
+        result.actor,
+        impact,
+        hooks.ms,
+        hooks.signal,
+      );
     const animations = Promise.all([
       animateFlips(root, previous, visual.board, hooks.ms),
       playFlipEffects(root, result.waves[layer], result.actor, layer + 1, hooks.ms, hooks.signal),

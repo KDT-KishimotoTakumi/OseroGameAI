@@ -1,6 +1,10 @@
+import '@fontsource/dela-gothic-one/400.css';
+import '@fontsource/orbitron/700.css';
+import '@fontsource/orbitron/900.css';
 import './presentation/styles.css';
 import './presentation/rpg.css';
 import './presentation/remix.css';
+import './presentation/arcade.css';
 import { RemixSession } from './application/remix-session';
 import { TurnNotice } from './application/turn-notice';
 import { available, sameCommand } from './domain/remix-match';
@@ -16,6 +20,14 @@ import {
   moveGuideStep,
   shouldShowGuide,
 } from './presentation/onboarding';
+import { playVictory } from './presentation/impact-effects';
+import {
+  DEFAULT_IMPACT,
+  IMPACT_LABELS,
+  impactProfile,
+  parseImpact,
+  type ImpactLevel,
+} from './presentation/impact-profile';
 import {
   readRemixReplays,
   saveRemixReplay,
@@ -57,7 +69,8 @@ let sound = true,
   soundVolume = 0.55,
   musicVolume = 0.3,
   motion = false,
-  duration = 'standard';
+  duration = 'standard',
+  impact: ImpactLevel = DEFAULT_IMPACT;
 try {
   const settings = JSON.parse(localStorage.getItem('jiso.settings') ?? '{}');
   sound = settings.sound ?? true;
@@ -70,6 +83,7 @@ try {
     typeof settings.musicVolume === 'number' ? Math.max(0, Math.min(1, settings.musicVolume)) : 0.3;
   motion = settings.motion ?? false;
   duration = settings.duration ?? 'standard';
+  impact = parseImpact(settings.impact);
 } catch {
   notice = '設定を初期化しました';
 }
@@ -89,6 +103,9 @@ const escape = (value: string) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!,
   );
 const currentSession = () => practice?.session ?? live;
+const resultLabel = (winner: number) => (winner === 0 ? '引き分け' : playerName(winner) + 'の勝利');
+// 勝敗バナーの登場演出は対局ごとに1回だけ再生する（再描画のたびに繰り返さない）。
+let victoryShown = '';
 function stop() {
   stopGameSounds();
   worker?.terminate();
@@ -107,7 +124,7 @@ function saveSettings() {
   try {
     localStorage.setItem(
       'jiso.settings',
-      JSON.stringify({ sound, music, soundVolume, musicVolume, motion, duration }),
+      JSON.stringify({ sound, music, soundVolume, musicVolume, motion, duration, impact }),
     );
     localStorage.setItem('jiso-reversi.sound', sound ? 'on' : 'off');
   } catch {
@@ -199,8 +216,7 @@ async function confirm() {
           saveRemixReplay({
             id: crypto.randomUUID(),
             date: new Date().toLocaleString('ja-JP'),
-            result:
-              result.next.winner === 0 ? '引き分け' : playerName(result.next.winner) + 'の勝利',
+            result: resultLabel(result.next.winner),
             schemaVersion: 1,
             ruleVersion: result.next.ruleVersion,
             mode: live.mode,
@@ -218,11 +234,15 @@ async function confirm() {
       currentSession() === session &&
       !replay;
     render(before);
+    const reduced = motion || matchMedia('(prefers-reduced-motion: reduce)').matches,
+      profile = impactProfile(impact, reduced),
+      ms = duration === 'short' ? 450 : duration === 'long' ? 1400 : 900;
     await playRemixAttack(app, before, result, {
       current: valid,
       signal: controller.signal,
-      reduced: motion || matchMedia('(prefers-reduced-motion: reduce)').matches,
-      ms: duration === 'short' ? 450 : duration === 'long' ? 1400 : 900,
+      reduced,
+      impact: profile,
+      ms,
       onWave: (chain) => {
         if (valid()) playGameSound('chain', chain);
       },
@@ -236,7 +256,6 @@ async function confirm() {
     if (!valid()) return;
     session.finish(generation, version);
     if (result.next.winner !== null) playGameSound('victory');
-    animation = undefined;
     if (training) {
       training.success = true;
       notice = '練習成功！ 次の練習へ進めます。';
@@ -246,6 +265,10 @@ async function confirm() {
         ? `${playerName(result.actor)}は置けるマスがないためパスしました`
         : `${result.waves.length}連鎖・${result.damage}ダメージ`;
     render();
+    // 勝敗バナーを描画した後に、その位置を中心として勝利演出を重ねる。
+    // 演出は controller が所有し、次の操作・新しい対局の stop() で中断される。
+    if (profile && result.next.winner !== null && result.next.winner !== 0)
+      playVictory(app, result.next.winner, profile, ms, controller.signal);
   } catch (error) {
     session.busy = false;
     notice = (error as Error).message;
@@ -352,21 +375,30 @@ function render(visual?: RemixMatch) {
     !!practice?.success;
   const preview = session.busy || replay ? null : session.selection;
   setMusicPlaying(!replay && (actual.winner === null || session.busy));
+  // 演出が終わってから勝敗を大きく表示する。練習・履歴再生では従来どおり表示しない。
+  let victory = '';
+  if (actual.winner !== null && !visual && !practice && !replay && !session.busy) {
+    const key = `${live.generation}:${actual.version}`;
+    const winnerClass =
+      actual.winner === 1 ? 'victory-cyan' : actual.winner === 2 ? 'victory-orange' : 'victory-draw';
+    victory = `<section class="victory-banner ${winnerClass} ${victoryShown === key ? '' : 'victory-enter'}"><strong id="victory-banner">${resultLabel(actual.winner)}</strong></section>`;
+    victoryShown = key;
+  }
   document.documentElement.classList.toggle('guide-open', guide !== null);
   document.documentElement.classList.toggle(
     'reduced-motion',
     motion || matchMedia('(prefers-reduced-motion: reduce)').matches,
   );
-  app.innerHTML = `<main class="shell"><p class="width-warning">横幅1280px以上の画面でプレイしてください。</p><header><div><h1>リミックス・オセロ</h1><p>盤面を回して、連続攻撃で相手のHPを0にする。</p><p>石を置くか、4×4区画を右・左に回すか。どちらか1つで勝負。</p></div><div class="status" aria-live="polite"><strong>${actual.winner !== null ? (actual.winner === 0 ? '引き分け' : playerName(actual.winner) + 'の勝利') : playerName(actual.turn) + 'の手番'}</strong><span>${actual.ply}手　${replay ? '履歴再生' : practice ? '練習モード' : live.mode === 'ai' ? 'あなた：シアン ／ AI：オレンジ' : '2人対戦'}</span><span>${actual.winner !== null ? '対局終了' : aiTurn ? 'AIが思考・攻撃中' : '自分の操作を選んでください'}</span></div></header>
+  app.innerHTML = `<main class="shell"><p class="width-warning">横幅1280px以上の画面でプレイしてください。</p><header><div><h1>リミックス・オセロ</h1><p>盤面を回して、連続攻撃で相手のHPを0にする。</p><p>石を置くか、4×4区画を右・左に回すか。どちらか1つで勝負。</p></div><div class="header-side"><details class="settings-menu"><summary>演出設定</summary><div class="settings-panel"><label><input id="music" type="checkbox" ${music ? 'checked' : ''}>BGM</label><label class="audio-setting" for="music-volume">BGM音量<output id="music-volume-value">${Math.round(musicVolume * 100)}%</output><input id="music-volume" type="range" min="0" max="100" value="${Math.round(musicVolume * 100)}"></label><label><input id="sound" type="checkbox" ${sound ? 'checked' : ''}>効果音</label><label class="audio-setting" for="sound-volume">SE音量<output id="sound-volume-value">${Math.round(soundVolume * 100)}%</output><input id="sound-volume" type="range" min="0" max="100" value="${Math.round(soundVolume * 100)}"></label><p>音は最初のクリック・キー操作後に始まります。別のタブへ移ると一時停止します。</p><label><input id="motion" type="checkbox" ${motion ? 'checked' : ''}>演出軽減</label><select id="duration" aria-label="演出速度">${['short', 'standard', 'long'].map((value, index) => `<option value="${value}" ${duration === value ? 'selected' : ''}>${['短', '標準', '長'][index]}</option>`).join('')}</select><label class="impact-setting">迫力<select id="impact" aria-label="演出の迫力">${Object.entries(IMPACT_LABELS).map(([value, label]) => `<option value="${value}" ${impact === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div></details><div class="status" aria-live="polite"><strong>${actual.winner !== null ? resultLabel(actual.winner) : playerName(actual.turn) + 'の手番'}</strong><span>${actual.ply}手　${replay ? '履歴再生' : practice ? '練習モード' : live.mode === 'ai' ? 'あなた：シアン ／ AI：オレンジ' : '2人対戦'}</span><span>${actual.winner !== null ? '対局終了' : aiTurn ? 'AIが思考・攻撃中' : '自分の操作を選んでください'}</span></div></div></header>
  <nav class="mode-toolbar"><button id="local">2人対戦</button><button id="ai">AI対戦</button><button id="tutorial">練習モード</button><button id="guide">遊び方ガイド</button><button id="new">新しい対局</button><button id="rematch">先後を交代して再戦</button><label>難易度<select id="difficulty">${Object.entries(difficultySettings).map(([value, setting]) => `<option value="${value}" ${level === value ? 'selected' : ''}>${setting.label}</option>`).join('')}</select></label></nav>
  ${practice ? `<section class="tutorial-banner"><h2>${PRACTICE[practice.index].title}</h2><p>${PRACTICE[practice.index].text}</p><p id="practice-progress">${practice.success ? '練習成功' : '練習中'} ${practice.index + 1} / ${PRACTICE.length}</p><button id="retry">この練習をやり直す</button><button id="next" ${practice.success ? '' : 'disabled'}>${practice.index === PRACTICE.length - 1 ? '練習を完了' : '次の練習へ'}</button><button id="close-practice">元の対局に戻る</button></section>` : ''}
- ${hpMarkup(current)}<p role="status">${escape(notice)}</p><section class="game-layout"><div class="board-wrap">${boardMarkup(current, { locked, input, preview, quadrant: input === 'rotate' ? quadrant : null })}<p>白点：着手できる場所 ／ 太線：4つの区画 ／ 黄色の番号：反転する順番</p><p id="attack-status" aria-live="polite">${replay ? `${replay.frames[replayIndex].waves?.length ?? 0}連鎖・${replay.frames[replayIndex].damage ?? 0}ダメージ` : escape(attackStatus)}</p>
+ ${victory}${hpMarkup(current)}<p role="status">${escape(notice)}</p><section class="game-layout"><div class="board-wrap">${boardMarkup(current, { locked, input, preview, quadrant: input === 'rotate' ? quadrant : null })}<p>白点：着手できる場所 ／ 太線：4つの区画 ／ 黄色の番号：反転する順番</p><p id="attack-status" aria-live="polite">${replay ? `${replay.frames[replayIndex].waves?.length ?? 0}連鎖・${replay.frames[replayIndex].damage ?? 0}ダメージ` : escape(attackStatus)}</p>
  ${replay ? `<section class="result-card"><p>リプレイ ${replayIndex}/${replay.frames.length - 1}手</p><button id="rprev" ${replayIndex === 0 ? 'disabled' : ''}>前の手</button><button id="rnext" ${replayIndex === replay.frames.length - 1 ? 'disabled' : ''}>次の手</button><button id="rclose">対局へ戻る</button><button id="restart">この開始条件の先後を交代して再戦</button></section>` : actual.winner !== null && !practice ? `<section class="result-card"><h2>対局結果</h2><p>${actual.endReason === 'hp' ? 'HPが0になったため終了' : actual.endReason === 'blocked' ? '双方とも置けるマスがないため、HP→石数で判定' : '攻撃なしが10手続いたため、HP→石数で判定'}</p><button id="same">先後を交代して再戦</button></section>` : ''}</div>
  <aside class="panel"><section class="panel-card"><h2>自分の番の操作</h2><div class="action-row"><button id="place-mode" aria-pressed="${input === 'cell'}" ${locked ? 'disabled' : ''}>石を置く</button><button id="rotate-mode" aria-pressed="${input === 'rotate'}" ${locked || !rotateAllowed ? 'disabled' : ''}>区画を回す</button></div><p id="rotation-rule">${rotateAllowed ? '回転できます。置けるマスがない番は自動でパスします。' : '前の自分の番に回したので、今回は石を置いてください。'}</p>
  ${input === 'rotate' ? `<p>回す区画を選ぶ</p><div class="action-row">${['左上', '右上', '左下', '右下'].map((label, index) => `<button data-quarter="${index}" aria-pressed="${quadrant === index}" ${locked ? 'disabled' : ''}>${label}</button>`).join('')}</div><div class="action-row"><button id="right" aria-pressed="${direction === 'right'}" ${locked ? 'disabled' : ''}>右回り ↻</button><button id="left" aria-pressed="${direction === 'left'}" ${locked ? 'disabled' : ''}>左回り ↺</button></div>` : '<p>白点のマスをクリックすると攻撃予告が出ます。</p>'}</section>
  <section class="panel-card preview-card"><h2>攻撃の予告</h2><p id="preview">${preview ? `${preview.waves.length}連鎖 ／ 合計 ${preview.damage}ダメージ<br>相手HP：${actual.hp[other(actual.turn)]} → ${preview.next.hp[other(actual.turn)]}` : '操作を選ぶと反転する石とダメージを表示します。'}</p><button id="confirm" ${locked || !preview ? 'disabled' : ''}>攻撃を決定</button><button id="cancel" ${locked || !preview ? 'disabled' : ''}>取り消す</button></section>
  <section class="panel-card"><h2>勝ち方</h2><p>反転1個で1ダメージ。連続攻撃で相手HPを0にすると勝ち。</p><p id="quiet">攻撃なし：${actual.quiet} / 10手</p><p>10手続いたら残りHP、同じなら石数で判定。双方とも置けない場合も、HP→石数で判定します。</p></section>
- <details><summary>演出設定</summary><label><input id="music" type="checkbox" ${music ? 'checked' : ''}>BGM</label><label class="audio-setting" for="music-volume">BGM音量<output id="music-volume-value">${Math.round(musicVolume * 100)}%</output><input id="music-volume" type="range" min="0" max="100" value="${Math.round(musicVolume * 100)}"></label><label><input id="sound" type="checkbox" ${sound ? 'checked' : ''}>効果音</label><label class="audio-setting" for="sound-volume">SE音量<output id="sound-volume-value">${Math.round(soundVolume * 100)}%</output><input id="sound-volume" type="range" min="0" max="100" value="${Math.round(soundVolume * 100)}"></label><p>音は最初のクリック・キー操作後に始まります。別のタブへ移ると一時停止します。</p><label><input id="motion" type="checkbox" ${motion ? 'checked' : ''}>演出軽減</label><select id="duration" aria-label="演出速度">${['short', 'standard', 'long'].map((value, index) => `<option value="${value}" ${duration === value ? 'selected' : ''}>${['短', '標準', '長'][index]}</option>`).join('')}</select></details>
+ 
  <details><summary>対局履歴・全手再生</summary><div id="history"></div></details></aside></section></main>`;
   if (turnNotice.active)
     app.insertAdjacentHTML(
@@ -523,7 +555,7 @@ function render(visual?: RemixMatch) {
     interrupt();
     render();
   });
-  for (const id of ['sound', 'music', 'music-volume', 'sound-volume', 'motion', 'duration'])
+  for (const id of ['sound', 'music', 'music-volume', 'sound-volume', 'motion', 'duration', 'impact'])
     app
       .querySelector('#' + id)
       ?.addEventListener(id.endsWith('volume') ? 'input' : 'change', (event) => {
@@ -533,9 +565,10 @@ function render(visual?: RemixMatch) {
         else if (id === 'music-volume') musicVolume = Number(target.value) / 100;
         else if (id === 'sound-volume') soundVolume = Number(target.value) / 100;
         else if (id === 'motion') motion = target.checked;
+        else if (id === 'impact') impact = parseImpact(target.value);
         else duration = target.value;
         saveSettings();
-        if (id !== 'motion' && id !== 'duration') {
+        if (id !== 'motion' && id !== 'duration' && id !== 'impact') {
           const output = app.querySelector('#' + id + '-value');
           if (output) output.textContent = target.value + '%';
           void unlockAudio();

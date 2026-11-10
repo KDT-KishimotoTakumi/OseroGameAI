@@ -43,12 +43,52 @@ it('ハードは全応手を比較し、相手の最大反撃を受けた後の�
   const match = createRemixMatch();
   const valueAfterReply = (command: ReturnType<typeof chooseRemix>) => {
     const next = simulate(match, command).next;
-    return Math.min(...available(next).map((reply) => {
-      const state = simulate(next, reply).next;
-      return (state.hp[1] - state.hp[2]) * 100 +
-        state.board.filter((cell) => cell === 1).length - state.board.filter((cell) => cell === 2).length;
-    }));
+    return Math.min(
+      ...available(next).map((reply) => {
+        const state = simulate(next, reply).next;
+        return (
+          (state.hp[1] - state.hp[2]) * 100 +
+          state.board.filter((cell) => cell === 1).length -
+          state.board.filter((cell) => cell === 2).length
+        );
+      }),
+    );
   };
   const command = chooseRemix(match, 'advanced', { now: () => 0 });
   expect(valueAfterReply(command)).toBe(Math.max(...available(match).map(valueAfterReply)));
+});
+it('同点の最善手はシードで選び分け、同じシードなら同じ手を返す（毎回同じ展開にしない）', () => {
+  const match = createRemixMatch();
+  for (const level of ['standard', 'advanced'] as const) {
+    const picks = new Set<string>();
+    for (let seed = 1; seed <= 24; seed++) {
+      const first = chooseRemix(match, level, { seed, now: () => 0 });
+      expect(chooseRemix(match, level, { seed, now: () => 0 })).toEqual(first);
+      picks.add(JSON.stringify(first));
+    }
+    expect(picks.size).toBeGreaterThan(1);
+  }
+});
+it('ハード以上は探索の末端で次の攻撃を見込み、最大ダメージだけを狙う相手に先後とも勝つ', () => {
+  expect(difficultySettings.standard.threatWeight).toBe(0);
+  expect(difficultySettings.advanced.threatWeight).toBeGreaterThan(0);
+  expect(difficultySettings['super-hard'].threatWeight).toBeGreaterThan(0);
+  const greedy = (state: ReturnType<typeof createRemixMatch>) => {
+    const moves = available(state);
+    const damages = moves.map((move) => simulate(state, move).damage);
+    const top = Math.max(...damages);
+    const pool = moves.filter((_, index) => damages[index] === top);
+    return pool.find((move) => move.kind !== 'rotate') ?? pool[0];
+  };
+  for (const aiPlayer of [1, 2] as const) {
+    let match = createRemixMatch(1);
+    while (match.winner === null) {
+      const command =
+        match.turn === aiPlayer
+          ? chooseRemix(match, 'advanced', { seed: 11 + match.ply, now: () => 0 })
+          : greedy(match);
+      match = simulate(match, command).next;
+    }
+    expect(match.winner).toBe(aiPlayer);
+  }
 });

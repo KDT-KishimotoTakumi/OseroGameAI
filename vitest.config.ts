@@ -16,6 +16,7 @@ export default defineConfig({
         'src/infrastructure/remix-replays.ts',
         'src/infrastructure/synth-audio.ts',
         'src/presentation/onboarding.ts',
+        'src/presentation/impact-profile.ts',
       ],
       thresholds: {
         statements: 90,

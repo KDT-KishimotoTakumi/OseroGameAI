@@ -1,0 +1,504 @@
+/* VISUAL-001：サイバー・アーケード風の見た目。文言・配置・マス寸法は変えない。 */
+:root {
+  --neon-cyan: #48eaff;
+  --neon-orange: #ffae63;
+  --neon-gold: #ffe388;
+  --panel-bg: linear-gradient(160deg, #0b1d2bee, #071019ee);
+}
+
+/* 背景：ネオン格子と走査線 */
+body {
+  background:
+    radial-gradient(ellipse at 50% -10%, #1b4d6e88 0, transparent 55%),
+    radial-gradient(ellipse at 100% 100%, #5a2a1244 0, transparent 45%),
+    linear-gradient(#48eaff0d 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(90deg, #48eaff0d 1px, transparent 1px) 0 0 / 44px 44px,
+    #04080f;
+  background-attachment: fixed;
+}
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, #ffffff07 0 1px, transparent 1px 3px);
+  mix-blend-mode: overlay;
+}
+
+/* タイトル */
+.shell h1 {
+  background: linear-gradient(
+    90deg,
+    #b8fbff,
+    var(--neon-cyan) 40%,
+    #ffd2a3 75%,
+    var(--neon-orange)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 14px #48eaff66) drop-shadow(0 0 28px #ff9d5533);
+  font-weight: 900;
+  font-style: italic;
+  animation: arcade-title 3.6s ease-in-out infinite;
+}
+@keyframes arcade-title {
+  50% {
+    filter: drop-shadow(0 0 20px #48eaffaa) drop-shadow(0 0 40px #ff9d5555);
+  }
+}
+header {
+  border-bottom: 0;
+  background: linear-gradient(90deg, transparent, #48eaff66, #ffae6366, transparent) bottom / 100%
+    2px no-repeat;
+}
+
+/* ボタン：アーケード風 */
+.shell button:not(.cell),
+.shell select,
+.guide-dialog button {
+  border: 1px solid #3f8aa0;
+  background: linear-gradient(180deg, #17384b, #0c2131);
+  color: #eaffff;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  box-shadow:
+    inset 0 1px 0 #ffffff22,
+    0 0 0 #48eaff00;
+  transition:
+    box-shadow 0.15s,
+    transform 0.15s,
+    border-color 0.15s;
+}
+.shell button:not(.cell):hover:not(:disabled),
+.guide-dialog button:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  box-shadow:
+    inset 0 1px 0 #ffffff33,
+    0 0 14px #48eaff66;
+  transform: translateY(-1px);
+}
+.shell button:not(.cell):active:not(:disabled) {
+  transform: translateY(1px);
+}
+.shell button[aria-pressed='true'] {
+  outline: 0;
+  border-color: var(--neon-gold);
+  background: linear-gradient(180deg, #4b4214, #2b2509);
+  color: #fff6cf;
+  box-shadow: 0 0 14px #ffe38866;
+}
+#confirm:not(:disabled) {
+  border-color: var(--neon-gold);
+  background: linear-gradient(180deg, #ffe388, #d9a93a);
+  color: #241a02;
+  box-shadow: 0 0 18px #ffe38888;
+  animation: arcade-ready 1.4s ease-in-out infinite;
+}
+@keyframes arcade-ready {
+  50% {
+    box-shadow: 0 0 30px #ffe388cc;
+  }
+}
+
+/* パネル：発光枠とコーナー装飾 */
+.panel-card,
+.panel details,
+.tutorial-banner,
+.result-card {
+  position: relative;
+  border: 1px solid #2c6a80;
+  background: var(--panel-bg);
+  box-shadow:
+    inset 0 0 24px #48eaff14,
+    0 0 0 1px #00000066;
+  clip-path: polygon(
+    0 0,
+    calc(100% - 14px) 0,
+    100% 14px,
+    100% 100%,
+    14px 100%,
+    0 calc(100% - 14px)
+  );
+}
+.panel-card::before,
+.result-card::before,
+.tutorial-banner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 46px;
+  height: 3px;
+  background: var(--neon-cyan);
+  box-shadow: 0 0 10px var(--neon-cyan);
+}
+.preview-card {
+  border-color: #b8993a;
+}
+.preview-card::before {
+  background: var(--neon-gold);
+  box-shadow: 0 0 10px var(--neon-gold);
+}
+.panel-card h2 {
+  color: #bff6ff;
+  text-shadow: 0 0 10px #48eaff66;
+}
+#attack-status {
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 14px #ffe38888;
+}
+
+/* HPゲージ：格闘ゲーム風の太いゲージとVS */
+.hp-bars {
+  position: relative;
+  gap: 72px;
+}
+.hp-bars::after {
+  content: 'VS';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) skewX(-10deg);
+  font-size: 1.9rem;
+  font-weight: 900;
+  font-style: italic;
+  color: #fff;
+  text-shadow:
+    0 0 10px var(--neon-cyan),
+    0 0 22px var(--neon-orange);
+  pointer-events: none;
+}
+.hp-card {
+  border: 1px solid #2c6a80;
+  background: var(--panel-bg);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 100%, 0 100%);
+}
+.orange-hp {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 16px 100%);
+  border-color: #8a5a32;
+}
+.hp-card strong {
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+}
+.cyan-hp strong {
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px #48eaff88;
+}
+.orange-hp strong {
+  color: var(--neon-orange);
+  text-shadow: 0 0 10px #ffae6388;
+}
+.hp-value {
+  font-weight: 800;
+}
+.hp-track {
+  height: 18px;
+  border: 1px solid #ffffff22;
+  border-radius: 3px;
+  background: #02070c;
+  box-shadow: inset 0 2px 6px #000c;
+}
+.hp-track > div {
+  background: linear-gradient(180deg, #d4fdff, var(--neon-cyan) 45%, #0a8fa6);
+  box-shadow: 0 0 12px #48eaffaa;
+  transition: width 0.35s ease-out;
+}
+.orange-hp .hp-track {
+  transform: scaleX(-1);
+}
+.orange-hp .hp-track > div {
+  background: linear-gradient(180deg, #fff0d6, var(--neon-orange) 45%, #b4541c);
+  box-shadow: 0 0 12px #ffae63aa;
+}
+
+/* 盤面：ネオン枠（マスの寸法・余白は変えない） */
+.board {
+  border-color: #3aa6c0;
+  background: radial-gradient(circle at 50% 50%, #103a4d 0, #081a26 70%), #0c2634;
+  box-shadow:
+    0 0 0 1px #48eaff33,
+    0 0 40px #16bde944,
+    0 0 90px #16bde91c,
+    inset 0 0 40px #020a12;
+  animation: arcade-board 4s ease-in-out infinite;
+}
+@keyframes arcade-board {
+  50% {
+    box-shadow:
+      0 0 0 1px #48eaff55,
+      0 0 52px #16bde966,
+      0 0 110px #16bde92a,
+      inset 0 0 40px #020a12;
+  }
+}
+.cell {
+  background: linear-gradient(160deg, #0e3d4f, #0a2b3a);
+}
+.cell[aria-disabled='false']:hover {
+  background: linear-gradient(160deg, #1a6a80, #0f4053);
+  box-shadow: inset 0 0 14px #48eaff55;
+}
+.legal-dot {
+  animation: arcade-dot 1.2s ease-in-out infinite;
+}
+@keyframes arcade-dot {
+  50% {
+    box-shadow: 0 0 22px #d8f7ff;
+    transform: scale(1.25);
+  }
+}
+
+/* 手番案内：アーケード風のバナー */
+.turn-notice span {
+  border: 0;
+  border-top: 3px solid var(--neon-cyan);
+  border-bottom: 3px solid var(--neon-orange);
+  border-radius: 0;
+  background: linear-gradient(90deg, #04101acc, #0a2a3cf5 30%, #0a2a3cf5 70%, #04101acc);
+  font-style: italic;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 18px #48eaffaa;
+  animation: arcade-notice 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes arcade-notice {
+  from {
+    transform: scaleX(0.2);
+    opacity: 0;
+  }
+}
+
+/* 迫力設定 */
+.impact-setting {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 追加演出レイヤー（演出中だけ要素を置く） */
+#impact-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  overflow: hidden;
+}
+.impact-wave,
+.impact-core,
+.impact-flash,
+.impact-combo {
+  position: fixed;
+  pointer-events: none;
+  opacity: 0;
+}
+.impact-wave {
+  border: 4px solid currentColor;
+  border-radius: 50%;
+  box-shadow:
+    0 0 18px currentColor,
+    inset 0 0 18px currentColor;
+}
+.impact-core {
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0, currentColor 30%, transparent 70%);
+  mix-blend-mode: screen;
+}
+.impact-flash {
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 50%, #ffffffcc 0, currentColor 35%, transparent 75%);
+  mix-blend-mode: screen;
+}
+.impact-combo {
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  -webkit-text-stroke: 2px #fff;
+  text-shadow:
+    0 0 12px currentColor,
+    0 0 30px currentColor,
+    4px 4px 0 #000a;
+}
+.reduced-motion #impact-layer {
+  display: none;
+}
+
+/* 揺れ演出は相対位置で動かす（impact-effects.ts の shake）。 */
+#app {
+  position: relative;
+}
+
+/* 勝敗バナー：終局後に大きく表示 */
+.victory-banner {
+  position: relative;
+  margin: 18px 0 6px;
+  padding: 14px 24px;
+  text-align: center;
+  background: linear-gradient(90deg, transparent, #0a2a3cf2 18%, #0a2a3cf2 82%, transparent);
+  border-top: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+}
+.victory-banner strong {
+  display: inline-block;
+  font-size: clamp(48px, 6.4vw, 92px);
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1.1;
+  letter-spacing: 0.08em;
+  color: #fff;
+  -webkit-text-stroke: 1px currentColor;
+  text-shadow:
+    0 0 14px currentColor,
+    0 0 36px currentColor,
+    4px 4px 0 #000a;
+}
+.victory-cyan {
+  color: var(--neon-cyan);
+}
+.victory-orange {
+  color: var(--neon-orange);
+}
+.victory-draw {
+  color: var(--neon-gold);
+}
+.victory-enter strong {
+  animation: victory-in 0.7s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+.victory-enter {
+  animation: victory-band 0.5s ease-out both;
+}
+@keyframes victory-in {
+  from {
+    transform: scale(2.6) skewX(-12deg);
+    opacity: 0;
+    filter: blur(6px);
+  }
+}
+@keyframes victory-band {
+  from {
+    clip-path: inset(0 50% 0 50%);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+/* 演出設定：画面右上（タイトルと同じ高さ）のドロップダウン */
+.header-side {
+  display: grid;
+  justify-items: end;
+  gap: 14px;
+}
+.settings-menu {
+  position: relative;
+}
+.settings-menu > summary {
+  list-style: none;
+  padding: 9px 14px;
+  border: 1px solid #3f8aa0;
+  background: linear-gradient(180deg, #17384b, #0c2131);
+  color: #eaffff;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
+}
+.settings-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.settings-menu > summary::before {
+  content: '⚙ ';
+}
+.settings-menu[open] > summary,
+.settings-menu > summary:hover {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 14px #48eaff66;
+}
+.settings-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 45;
+  width: 320px;
+  padding: 14px 16px;
+  border: 1px solid #2c6a80;
+  background: #071621f7;
+  box-shadow:
+    0 12px 32px #000c,
+    inset 0 0 24px #48eaff14;
+}
+.settings-panel label {
+  display: block;
+  margin: 8px 0;
+}
+.settings-panel p {
+  font-size: 0.82rem;
+  color: #93afbb;
+  line-height: 1.6;
+}
+
+/* VISUAL-002：ゲーム用フォント・背景画像・駒画像 */
+:root {
+  --font-display: 'Dela Gothic One', 'Yu Gothic', sans-serif;
+  --font-digits: 'Orbitron', 'Dela Gothic One', sans-serif;
+}
+body {
+  background:
+    linear-gradient(180deg, #04080fd9 0, #04080fb3 40%, #04080fe6 100%),
+    linear-gradient(#48eaff0d 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(90deg, #48eaff0d 1px, transparent 1px) 0 0 / 44px 44px,
+    url('/assets/bg-neon-streaks.jpg') center / cover no-repeat,
+    #04080f;
+  background-attachment: fixed;
+}
+/* 太いディスプレイ書体は小さいと潰れるため、大きな見出し・演出文字だけに使う。 */
+.shell h1,
+.turn-notice span,
+.victory-banner strong,
+.hp-card strong,
+#attack-status {
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+.shell h1 {
+  letter-spacing: 0.06em;
+}
+.hp-bars::after,
+.hp-value,
+.impact-combo,
+.coord,
+.wave-mark {
+  font-family: var(--font-digits);
+}
+.hp-value {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.hp-bars::after,
+.impact-combo {
+  font-weight: 900;
+}
+.coord {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+/* 駒：プロジェクト用に作成したエネルギーコア型のSVG。マスの寸法は変えず、駒だけ少し大きく見せる。 */
+.stone {
+  inset: 11%;
+  background: url('/assets/piece-cyan.svg') center / contain no-repeat;
+  box-shadow: 0 0 16px #37e9ff55;
+}
+.stone-orange .stone {
+  background: url('/assets/piece-orange.svg') center / contain no-repeat;
+  box-shadow: 0 0 16px #ff9d5555;
+}
+.impact-shaking,
+.impact-shaking body {
+  overflow-x: hidden;
+}
